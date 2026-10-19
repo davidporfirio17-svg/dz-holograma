@@ -1,0 +1,3 @@
+[submodule "Vendor/idevice"]
+	path = Vendor/idevice
+	url = https://github.com/jkcoxson/idevice.git
