@@ -161,7 +161,7 @@ final class AdminWorkerClient {
     static let shared = AdminWorkerClient()
 
     private let baseURL = URL(string: "https://dz-holograma.davidporfirio17.workers.dev")!
-    private let trustedHost = "dz.davidporfirio17.workers.dev"
+    private let trustedHost = "dz-holograma.davidporfirio17.workers.dev"
     private let session: URLSession
 
     private init() {
