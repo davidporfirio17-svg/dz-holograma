@@ -29,4 +29,15 @@ El Worker que estaba desplegado al revisar la cuenta era una versión inicial de
 5. Configurar el bundle identifier y firma de la IPA independiente.
 6. Validar login, creación de un case de prueba, subida de archivos MAX/normal, pausa, reanudación y eliminación antes de usar datos reales.
 
+## Despliegue automático desde GitHub
+
+El repositorio incluye `.github/workflows/deploy-cloudflare.yml`. Cada cambio en `worker/` que llegue a `main` valida la sintaxis y ejecuta `wrangler deploy` contra el Worker `dz-holograma`.
+
+Para activarlo, agrega en GitHub → Settings → Secrets and variables → Actions estos secretos del repositorio:
+
+- `CLOUDFLARE_API_TOKEN`: token limitado a la cuenta y al despliegue de Workers.
+- `CLOUDFLARE_ACCOUNT_ID`: `cdf6281fd2e24d718ad9288b9d0cfd76`.
+
+El token no se guarda en el repositorio ni en el workflow. El archivo `worker/wrangler.toml` enlaza únicamente `DZ_HOLOGRAMA_DATA` y `dz-holograma-files`.
+
 La configuración operativa y los secretos no se guardan en Git.

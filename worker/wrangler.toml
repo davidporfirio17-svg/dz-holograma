@@ -1,0 +1,12 @@
+name = "dz-holograma"
+main = "dz.mjs"
+compatibility_date = "2026-10-19"
+workers_dev = true
+
+[[kv_namespaces]]
+binding = "DZH_KV"
+id = "0a46c6a8694d477f8430b4aa1f7921bc"
+
+[[r2_buckets]]
+binding = "DZH_FILES"
+bucket_name = "dz-holograma-files"
