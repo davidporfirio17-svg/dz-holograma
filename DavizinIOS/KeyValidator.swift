@@ -163,9 +163,6 @@ class KeyValidator {
                     return
                 }
 
-                let rawBody = String(data: data.prefix(512), encoding: .utf8) ?? "(no legible)"
-                NSLog("[KeyValidator] Body: %@", rawBody)
-
                 do {
                     let resp = try JSONDecoder().decode(KeyResponse.self, from: data)
                     lastCountryCode = resp.data?.country?.uppercased()

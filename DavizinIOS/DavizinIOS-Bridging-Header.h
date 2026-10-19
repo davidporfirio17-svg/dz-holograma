@@ -2,6 +2,7 @@
 #import "mcm_bridge.h"
 #import "NixelIdeviceFFI.h"
 #import "NixelAirLiftBridge.h"
+#import "NixelAirLiftC.h"
 #import "kexploit/kexploit_opa334.h"
 #import "kexploit/sandbox_escape.h"
 #import "kexploit/krw.h"

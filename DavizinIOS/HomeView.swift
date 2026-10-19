@@ -37,11 +37,11 @@ struct HomeView: View {
     private var header: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("DZ HOLOGRAMA")
+                Text("NYXEL EXTERNAL")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
                     .tracking(-0.4)
                     .foregroundStyle(primary)
-                Text("SECURE OPERATIONS · TEST BUILD · v\(appState.appVersion)")
+                Text("SECURE OPERATIONS · TEST BUILD · v\(appState.appVersion) · IPA #\(appState.ipaBuildNumber)")
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(1.1)
                     .foregroundStyle(muted)

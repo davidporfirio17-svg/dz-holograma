@@ -1,6 +1,10 @@
 import Foundation
 import UIKit
 
+extension Notification.Name {
+    static let nyxelInjectionProgress = Notification.Name("nyxel.injection.progress")
+}
+
 enum NyxelErrorCode {
     static let unsupportedSystem = "NYX-001"
     static let workerUnavailable = "NYX-002"
@@ -37,31 +41,71 @@ enum NyxelRemoteConfigStore {
     static func recordFailure(_ message: String) { UserDefaults.standard.set(message, forKey: statusKey) }
 }
 
-/// Historial local breve; nunca almacena keys, tokens ni HWID.
+/// Historial técnico local acotado; redacta posibles credenciales antes de guardarlas.
 enum NyxelActivityLog {
     private static let key = "nyxel.activity.log"
-    private static let limit = 6
+    private static let limit = 1_600
+    private static let lock = NSRecursiveLock()
 
-    static var entries: [String] { UserDefaults.standard.stringArray(forKey: key) ?? [] }
+    static var entries: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return (UserDefaults.standard.stringArray(forKey: key) ?? []).map { sanitized($0) }
+    }
+
+    static var recentEntries: [String] { Array(entries.prefix(100)) }
 
     static func record(_ message: String) {
+        lock.lock()
+        defer { lock.unlock() }
         let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        let entry = "\(formatter.string(from: Date()))  \(message)"
-        var values = entries
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        let entry = "\(formatter.string(from: Date()))  \(sanitized(message))"
+        var values = UserDefaults.standard.stringArray(forKey: key) ?? []
         values.insert(entry, at: 0)
         UserDefaults.standard.set(Array(values.prefix(limit)), forKey: key)
     }
+
+    static func clear() {
+        lock.lock()
+        defer { lock.unlock() }
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+
+    private static func sanitized(_ value: String) -> String {
+        let patterns = [
+            #"(?i)(["']?(?:authorization|api[_ -]?key|session[_ -]?key|access[_ -]?token|refresh[_ -]?token|password|secret|hwid|token|grappa[_ -]?(?:key|secret|token)|pairing[_ -]?(?:key|secret|token))["']?)\s*[:=]\s*("[^"]*"|'[^']*'|[^,;\s}\]]+)"#
+        ]
+        let redacted = patterns.reduce(value) { result, pattern in
+            result.replacingOccurrences(of: pattern, with: "$1=[REDACTED]", options: .regularExpression)
+        }
+        let pinRedacted = redacted.replacingOccurrences(
+            of: #"(?i)(PIN\s+recibido\s+por\s+AirLift:\s*)\d{4,8}\b"#,
+            with: "$1[REDACTED]",
+            options: .regularExpression
+        )
+        let containersRedacted = pinRedacted.replacingOccurrences(
+            of: #"(?i)(/var/mobile/Containers/Data/Application/)[A-F0-9-]{20,}"#,
+            with: "$1[APP_CONTAINER]",
+            options: .regularExpression
+        )
+        return containersRedacted.replacingOccurrences(
+            of: #"(?i)(/private)?/var/mobile/Containers/Data/Application/[^\s,;]+/tmp/nyxel-airlift-[^\s,;]+"#,
+            with: "[AIRLIFT_TEMP_PATH]",
+            options: .regularExpression
+        )
+    }
 }
 
-/// Estado de disponibilidad de apps mediante los esquemas declarados en Info.plist.
 enum NyxelInstalledGames {
-    static func statusText() -> String {
-        let maxInstalled = canOpen("freefiremax")
-        let normalInstalled = canOpen("freefire") || canOpen("freefireth")
-        let max = maxInstalled ? "✓ MAX instalado" : "— MAX no detectado"
-        let normal = normalInstalled ? "✓ Free Fire instalado" : "— Free Fire no detectado"
-        return "JUEGOS\n\(max)\n\(normal)"
+    static func isInstalled(for game: DavizinGame) -> Bool {
+        switch game {
+        case .freeFireMax:
+            return canOpen("freefiremax")
+        case .freeFire:
+            return canOpen("freefire") || canOpen("freefireth")
+        }
     }
 
     private static func canOpen(_ scheme: String) -> Bool {

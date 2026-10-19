@@ -16,14 +16,58 @@ enum AppTheme {
     static var secondaryText: UIColor { adaptive(dark: UIColor(red: 0.800, green: 0.840, blue: 0.890, alpha: 0.72), light: UIColor(red: 0.220, green: 0.255, blue: 0.320, alpha: 0.78)) }
     static var tertiaryText: UIColor { adaptive(dark: UIColor(red: 0.700, green: 0.760, blue: 0.830, alpha: 0.42), light: UIColor(red: 0.300, green: 0.340, blue: 0.420, alpha: 0.60)) }
 
-    static let success         = UIColor(red: 0.420, green: 0.820, blue: 0.690, alpha: 1.0)
-    static let failure         = UIColor(red: 0.980, green: 0.360, blue: 0.400, alpha: 1.0)
-    static let warm            = UIColor(red: 1.000, green: 0.680, blue: 0.260, alpha: 1.0)
-    static let accentWarm      = warm
+    private static let successDark = UIColor(red: 0.420, green: 0.820, blue: 0.690, alpha: 1.0)
+    private static let failureDark = UIColor(red: 0.980, green: 0.360, blue: 0.400, alpha: 1.0)
+    private static let warmDark = UIColor(red: 1.000, green: 0.680, blue: 0.260, alpha: 1.0)
 
-    static var accent: UIColor { NyxelAppearanceStore.accent }
-    static var accentHot: UIColor { NyxelAppearanceStore.accentHot }
+    static var success: UIColor { readableSuccess }
+    static var failure: UIColor { readableFailure }
+    static var warm: UIColor { readableWarm }
+    static var accentWarm: UIColor { readableWarm }
+
+    static var accent: UIColor { readableAccent }
+    static var accentHot: UIColor { readableAccent }
     static var accentDim: UIColor { NyxelAppearanceStore.accentDim }
+
+    /// Colores de texto/acento con contraste suficiente sobre tarjetas claras.
+    static var readableAccent: UIColor {
+        UIColor { traits in
+            guard traits.userInterfaceStyle == .light else { return NyxelAppearanceStore.accent }
+            switch NyxelAppearanceStore.theme {
+            case .cyan: return UIColor(red: 0.00, green: 0.40, blue: 0.31, alpha: 1.0)
+            case .ember: return UIColor(red: 0.60, green: 0.19, blue: 0.04, alpha: 1.0)
+            case .violet: return UIColor(red: 0.35, green: 0.18, blue: 0.63, alpha: 1.0)
+            }
+        }
+    }
+    static var accentForeground: UIColor {
+        UIColor { traits in
+            traits.userInterfaceStyle == .light
+                ? .white
+                : UIColor(red: 0.025, green: 0.035, blue: 0.055, alpha: 1.0)
+        }
+    }
+    static var readableSuccess: UIColor {
+        UIColor { traits in
+            traits.userInterfaceStyle == .light
+                ? UIColor(red: 0.08, green: 0.39, blue: 0.25, alpha: 1.0)
+                : successDark
+        }
+    }
+    static var readableFailure: UIColor {
+        UIColor { traits in
+            traits.userInterfaceStyle == .light
+                ? UIColor(red: 0.68, green: 0.13, blue: 0.20, alpha: 1.0)
+                : failureDark
+        }
+    }
+    static var readableWarm: UIColor {
+        UIColor { traits in
+            traits.userInterfaceStyle == .light
+                ? UIColor(red: 0.54, green: 0.29, blue: 0.04, alpha: 1.0)
+                : warmDark
+        }
+    }
 
     static var control: UIColor { card }
     static var separator: UIColor { hairline }

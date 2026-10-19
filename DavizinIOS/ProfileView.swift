@@ -2,10 +2,11 @@ import UIKit
 
 protocol ProfileViewDelegate: AnyObject {
     func profileViewDidTapLogout(_ view: ProfileView)
+    func profileView(_ view: ProfileView, didRequestShareDiagnostics text: String)
 }
 
 enum SessionStats {
-    private static let key = "dzh_injection_count"
+    private static let key = "dz_injection_count"
     static var injectionCount: Int {
         get { UserDefaults.standard.integer(forKey: key) }
         set { UserDefaults.standard.set(newValue, forKey: key) }
@@ -109,11 +110,6 @@ final class ProfileView: UIView {
     private let expirationValueLabel = UILabel()
     private let accountStatusLabel = UILabel()
     private let countValueLabel = UILabel()
-    private let serviceStatusLabel = UILabel()
-    private let diagnosticsLabel = UILabel()
-    private let activityLabel = UILabel()
-    private let gamesLabel = UILabel()
-    private let historyLabel = UILabel()
     private let deviceLabel = UILabel()
     private let rankProgressLabel = UILabel()
     private let themeControl = UISegmentedControl(items: ["Auto", "Claro", "Oscuro"])
@@ -121,6 +117,9 @@ final class ProfileView: UIView {
     private let biometricSwitch = UISwitch()
     private let activationVoiceSwitch = UISwitch()
     private let refreshButton = UIButton(type: .system)
+    private let diagnosticsLabel = UILabel()
+    private let refreshDiagnosticsButton = UIButton(type: .system)
+    private let shareDiagnosticsButton = UIButton(type: .system)
     private let logoutButton = DavizinButton(title: "CERRAR SESIÓN", style: .destructive)
     private let scrollView = UIScrollView()
     private let progressTrack = CAShapeLayer()
@@ -159,20 +158,13 @@ final class ProfileView: UIView {
         countValueLabel.text = "\(count)"
         let next = rankTiers.first(where: { $0.minCount > count })?.minCount
         rankProgressLabel.text = next.map { "Progreso de rango: \(count)/\($0)" } ?? "Progreso de rango: máximo alcanzado"
-        deviceLabel.text = "DZ HOLOGRAMA\n\(KeyValidator.getDeviceModel()) • \(NyxelSupportPolicy.currentSystemDescription)"
+        deviceLabel.text = "NYXEL EXTERNAL\n\(NyxelSupportPolicy.currentDeviceModel) • \(NyxelSupportPolicy.currentSystemDescription)"
         themeControl.selectedSegmentIndex = NyxelAppearanceStore.colorMode.rawValue
         appearanceControl.selectedSegmentIndex = NyxelAppearanceStore.theme.rawValue
         biometricSwitch.isOn = UserDefaults.standard.bool(forKey: "nyxel.biometric.enabled")
         activationVoiceSwitch.isOn = SoundService.shared.activationVoiceEnabled
-        serviceStatusLabel.text = "●  \(NyxelRemoteConfigStore.status)"
-        serviceStatusLabel.textColor = NyxelRemoteConfigStore.status == "Configuración válida" ? AppTheme.success : AppTheme.warm
-        diagnosticsLabel.text = diagnosticText()
-        gamesLabel.text = NyxelInstalledGames.statusText()
-        let history = NyxelActivityLog.entries
-        historyLabel.text = history.isEmpty ? "HISTORIAL\nSin actividad registrada" : "HISTORIAL\n" + history.joined(separator: "\n")
-        let formatter = DateFormatter(); formatter.dateFormat = "HH:mm:ss"
-        activityLabel.text = "Última actividad  •  Perfil consultado a las \(formatter.string(from: Date()))"
         updateProgressRing()
+        refreshDiagnosticsTapped()
     }
 
     private func configure() {
@@ -204,7 +196,7 @@ final class ProfileView: UIView {
         avatarImageView.layer.addSublayer(progressTrack)
         avatarImageView.layer.addSublayer(progressRing)
 
-        nameLabel.text = "DZ HOLOGRAMA"
+        nameLabel.text = "NYXEL EXTERNAL"
         nameLabel.font = AppTheme.titleFont(19)
         nameLabel.textColor = AppTheme.primaryText
         rankLabel.font = .systemFont(ofSize: 10, weight: .semibold)
@@ -226,19 +218,6 @@ final class ProfileView: UIView {
         let expirationRow = makeRow(label: "Expira en", valueLabel: expirationValueLabel)
         let countRow = makeRow(label: "Inyecciones totales", valueLabel: countValueLabel)
 
-        serviceStatusLabel.font = AppTheme.monoFont(11)
-        diagnosticsLabel.font = UIFont.monospacedSystemFont(ofSize: 10, weight: .medium)
-        diagnosticsLabel.textColor = AppTheme.secondaryText
-        diagnosticsLabel.numberOfLines = 0
-        activityLabel.font = .systemFont(ofSize: 10, weight: .medium)
-        activityLabel.textColor = AppTheme.tertiaryText
-        activityLabel.numberOfLines = 0
-        gamesLabel.font = AppTheme.monoFont(10)
-        gamesLabel.textColor = AppTheme.secondaryText
-        gamesLabel.numberOfLines = 0
-        historyLabel.font = AppTheme.monoFont(10)
-        historyLabel.textColor = AppTheme.tertiaryText
-        historyLabel.numberOfLines = 0
         deviceLabel.font = AppTheme.monoFont(10)
         deviceLabel.textColor = AppTheme.secondaryText
         deviceLabel.numberOfLines = 0
@@ -279,13 +258,33 @@ final class ProfileView: UIView {
         accentRow.axis = .vertical
         accentRow.spacing = 8
 
+        diagnosticsLabel.font = AppTheme.monoFont(10)
+        diagnosticsLabel.textColor = AppTheme.primaryText
+        diagnosticsLabel.numberOfLines = 0
+        diagnosticsLabel.lineBreakMode = .byCharWrapping
+        diagnosticsLabel.text = "Aún no hay registros. Reproduce el error y actualiza esta sección."
+        let diagnosticsNote = UILabel()
+        diagnosticsNote.text = "Registro local de la conexión y AirLift. Los PIN y tokens se redactan; no se guardan contenidos de archivos."
+        diagnosticsNote.font = .systemFont(ofSize: 11, weight: .regular)
+        diagnosticsNote.textColor = AppTheme.secondaryText
+        diagnosticsNote.numberOfLines = 0
+        configureDiagnosticsButton(refreshDiagnosticsButton, title: "ACTUALIZAR LOGS")
+        configureDiagnosticsButton(shareDiagnosticsButton, title: "COMPARTIR LOGS")
+        let diagnosticsActions = UIStackView(arrangedSubviews: [refreshDiagnosticsButton, shareDiagnosticsButton])
+        diagnosticsActions.axis = .horizontal
+        diagnosticsActions.distribution = .fillEqually
+        diagnosticsActions.spacing = 10
+        let diagnosticsSection = ProfileDisclosureSection(
+            title: "DIAGNÓSTICO",
+            views: [diagnosticsNote, diagnosticsLabel, diagnosticsActions],
+            expanded: false
+        )
+
         let accountSection = ProfileDisclosureSection(title: "CUENTA", views: [keyRow, countryRow, statusRow, expirationRow, countRow, rankProgressLabel, deviceLabel])
         let appearanceSection = ProfileDisclosureSection(title: "APARIENCIA", views: [themeRow, accentRow])
         let securitySection = ProfileDisclosureSection(title: "SEGURIDAD", views: [biometricRow])
         let audioSection = ProfileDisclosureSection(title: "AUDIO", views: [activationVoiceRow])
-        let diagnosticSection = ProfileDisclosureSection(title: "DIAGNÓSTICO", views: [serviceStatusLabel, diagnosticsLabel, gamesLabel], expanded: false)
-        let activitySection = ProfileDisclosureSection(title: "ACTIVIDAD", views: [historyLabel, activityLabel], expanded: false)
-        let stack = UIStackView(arrangedSubviews: [heroStack, accountSection, appearanceSection, securitySection, audioSection, diagnosticSection, activitySection, refreshButton, logoutButton])
+        let stack = UIStackView(arrangedSubviews: [heroStack, accountSection, appearanceSection, securitySection, audioSection, diagnosticsSection, refreshButton, logoutButton])
         stack.axis = .vertical; stack.spacing = 15
         stack.setCustomSpacing(22, after: heroStack)
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -299,6 +298,8 @@ final class ProfileView: UIView {
         scrollView.addSubview(card)
 
         refreshButton.addTarget(self, action: #selector(refreshTapped), for: .touchUpInside)
+        refreshDiagnosticsButton.addTarget(self, action: #selector(refreshDiagnosticsTapped), for: .touchUpInside)
+        shareDiagnosticsButton.addTarget(self, action: #selector(shareDiagnosticsTapped), for: .touchUpInside)
         logoutButton.addTarget(self, action: #selector(logoutTapped), for: .touchUpInside)
 
         NSLayoutConstraint.activate([
@@ -337,6 +338,37 @@ final class ProfileView: UIView {
     }
 
     @objc private func logoutTapped() { SoundService.shared.playClick(); delegate?.profileViewDidTapLogout(self) }
+
+    @objc private func refreshDiagnosticsTapped() {
+        let recent = Array(NyxelActivityLog.recentEntries.prefix(40).reversed())
+        diagnosticsLabel.text = recent.isEmpty
+            ? "Aún no hay registros. Reproduce el error y actualiza esta sección."
+            : recent.joined(separator: "\n")
+    }
+
+    @objc private func shareDiagnosticsTapped() {
+        let entries = NyxelActivityLog.entries.reversed().joined(separator: "\n")
+        guard !entries.isEmpty else {
+            diagnosticsLabel.text = "Aún no hay registros para compartir."
+            return
+        }
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        let ipaBuild = (Bundle.main.object(forInfoDictionaryKey: "NyxelBuildNumber") as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "local"
+        let report = "Nyxel External · versión \(version) (\(build)) · IPA #\(ipaBuild)\nRegistros locales sanitizados\n\n\(entries)"
+        delegate?.profileView(self, didRequestShareDiagnostics: report)
+    }
+
+    private func configureDiagnosticsButton(_ button: UIButton, title: String) {
+        button.setTitle(title, for: .normal)
+        button.setTitleColor(AppTheme.readableAccent, for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 10, weight: .bold)
+        button.backgroundColor = AppTheme.accent.withAlphaComponent(0.10)
+        button.layer.cornerRadius = 9
+        button.layer.borderWidth = 1
+        button.layer.borderColor = AppTheme.hairline.cgColor
+        button.heightAnchor.constraint(equalToConstant: 38).isActive = true
+    }
 
     @objc private func appearanceChanged() {
         let theme = NyxelAppearanceStore.Theme(rawValue: appearanceControl.selectedSegmentIndex) ?? .cyan
@@ -393,14 +425,6 @@ final class ProfileView: UIView {
         let names = ["MX": "México", "GT": "Guatemala", "US": "Estados Unidos", "CA": "Canadá", "ES": "España", "CO": "Colombia", "AR": "Argentina", "CL": "Chile", "PE": "Perú", "BR": "Brasil", "DO": "República Dominicana", "HN": "Honduras", "SV": "El Salvador", "CR": "Costa Rica", "PA": "Panamá", "NI": "Nicaragua", "VE": "Venezuela", "EC": "Ecuador", "BO": "Bolivia", "UY": "Uruguay", "PY": "Paraguay", "PR": "Puerto Rico", "EU": "Europa"]
         let normalized = code.uppercased()
         return names[normalized].map { "\(normalized) · \($0)" } ?? normalized
-    }
-
-    private func diagnosticText() -> String {
-        let system = NyxelSupportPolicy.currentSystemDescription
-        let compatibility = NyxelSupportPolicy.isCurrentSystemSupported ? "Compatible" : "No compatible"
-        let formatter = DateFormatter(); formatter.dateFormat = "HH:mm:ss"
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
-        return "Sistema: \(system)\nCompatibilidad: \(compatibility)\nHora local: \(formatter.string(from: Date()))\nNyxel: v\(version)\nConfiguración: \(NyxelRemoteConfigStore.status) (\(NyxelRemoteConfigStore.ageDescription))"
     }
 
     override func layoutSubviews() {

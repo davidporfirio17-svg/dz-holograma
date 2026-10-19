@@ -1,7 +1,7 @@
 import Foundation
 import UserNotifications
 
-enum DavizinScreenStage: Equatable { case login, home, gameSelection, modeSelection, operation, profile }
+enum DavizinScreenStage: Equatable { case login, home, gameSelection, modeSelection, operation, profile, help }
 
 enum DavizinGame: String, CaseIterable { case freeFire = "Free Fire", freeFireMax = "Free Fire MAX" }
 
@@ -61,9 +61,9 @@ struct DavizinMode: Hashable, Codable, Identifiable {
 }
 
 enum DavizinModeCatalog {
-    private static let storageKey = "dzh_remote_mode_config_v4"
+    private static let storageKey = "dz_remote_mode_config_v4"
     static func all() -> [DavizinMode] {
-        for key in [storageKey, "dzh_remote_mode_config_v3", "dzh_remote_mode_config_v2"] {
+        for key in [storageKey, "dz_remote_mode_config_v3", "dz_remote_mode_config_v2"] {
             guard let data = UserDefaults.standard.data(forKey: key), let saved = try? JSONDecoder().decode([DavizinMode].self, from: data) else { continue }
             return saved.filter { isSafeID($0.id) && !$0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         }
@@ -218,11 +218,11 @@ enum NyxelCleanupFlow {
 
     private static func scheduleReminder() {
         let content = UNMutableNotificationContent()
-        content.title = "Nyxel: limpia la sesión"
-        content.body = "Regresa a Nyxel y pulsa “Limpiar sesión” antes de volver a inyectar."
+        content.title = "Cierra el juego para limpiar"
+        content.body = "Regresa a Nyxel y pulsa “LIMPIAR SESIÓN SÍ O SÍ” antes de volver a inyectar."
         content.sound = .default
         content.interruptionLevel = .timeSensitive
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 3, repeats: false)
         let request = UNNotificationRequest(identifier: notificationID, content: content, trigger: trigger)
         center.add(request)
     }

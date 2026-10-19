@@ -4,6 +4,7 @@ import NetworkExtension
 import Security
 import UIKit
 import Darwin
+import UserNotifications
 
 enum NixelCheckState: String {
     case notChecked = "No verificado"
@@ -185,12 +186,14 @@ final class NixelPairingProbe {
         self.completion = completion
         serviceMap.removeAll()
 
+        let parameters = NWParameters.tcp
+        parameters.includePeerToPeer = true
         let serviceTypes = [
             "_remotepairing-pairable-host._tcp",
             "_3105airlift._tcp"
         ]
         browsers = serviceTypes.map { serviceType in
-            let browser = NWBrowser(for: .bonjour(type: serviceType, domain: nil), using: .tcp)
+            let browser = NWBrowser(for: .bonjour(type: serviceType, domain: nil), using: parameters)
             browser.browseResultsChangedHandler = { [weak self] results, _ in
                 guard let self else { return }
                 for result in results {
@@ -228,7 +231,9 @@ final class NixelPairingProbe {
         completion: @escaping (NixelPairingTransportResult) -> Void
     ) {
         connection?.cancel()
-        let connection = NWConnection(to: service.endpoint, using: .tcp)
+        let parameters = NWParameters.tcp
+        parameters.includePeerToPeer = true
+        let connection = NWConnection(to: service.endpoint, using: parameters)
         self.connection = connection
         var completed = false
         func finish(_ result: NixelPairingTransportResult) {
@@ -403,7 +408,7 @@ enum NixelPairingSessionState {
     var message: String {
         switch self {
         case .idle: return "Pairing sin iniciar"
-        case .searching: return "Publicando host AirLift para que el iPad lo detecte…"
+        case .searching: return "Solicitando acceso a la red local y preparando el host AirLift…"
         case .serviceDetected(let name): return "Host local publicado: \(name); esperando que el iPad lo detecte…"
         case .transportReachable(let name): return "Transporte accesible: \(name)"
         case .pairingRecordFound(let name): return "Registro local encontrado para \(name); autenticación pendiente"
@@ -416,21 +421,107 @@ enum NixelPairingSessionState {
     }
 }
 
+/// Solicita el permiso de red local antes de publicar el PairableHost.
+/// Sigue el preflight de test1-main: un listener y un browser Bonjour activos
+/// durante un breve intervalo hacen que iOS presente el permiso en contexto.
+private final class NixelPairingLocalNetworkAuthorization {
+    private var listener: NWListener?
+    private var browser: NWBrowser?
+    private var timeoutWorkItem: DispatchWorkItem?
+    private var completion: (() -> Void)?
+
+    func request(completion: @escaping () -> Void) {
+        stop()
+        self.completion = completion
+
+        let parameters = NWParameters.tcp
+        parameters.includePeerToPeer = true
+
+        let listener = try? NWListener(using: parameters)
+        listener?.service = NWListener.Service(name: "SupportPatchProbe", type: "_aircardprobe._tcp")
+        listener?.newConnectionHandler = { $0.cancel() }
+        self.listener = listener
+
+        let browser = NWBrowser(for: .bonjour(type: "_aircardprobe._tcp", domain: nil), using: parameters)
+        browser.stateUpdateHandler = { state in
+            if case .failed(let error) = state {
+                NyxelActivityLog.record("Pairing local-network preflight: browser failed — \(error.localizedDescription)")
+            }
+        }
+        self.browser = browser
+        listener?.start(queue: .main)
+        browser.start(queue: .main)
+
+        let work = DispatchWorkItem { [weak self] in self?.finishRequest() }
+        timeoutWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
+    }
+
+    func stop() {
+        timeoutWorkItem?.cancel()
+        timeoutWorkItem = nil
+        browser?.cancel()
+        browser = nil
+        listener?.cancel()
+        listener = nil
+        completion = nil
+    }
+
+    private func finishRequest() {
+        guard let completion else { return }
+        self.completion = nil
+        timeoutWorkItem = nil
+        browser?.cancel()
+        browser = nil
+        listener?.cancel()
+        listener = nil
+        completion()
+    }
+}
+
 /// Orquesta el flujo de External: publica primero un PairableHost local para
 /// que el iPad lo descubra. El backend FFI acepta la conexión iniciada por iOS,
 /// entrega el PIN y devuelve el registro RPairing solo tras un handshake real.
+private enum NixelPairingPINNotification {
+    private static let identifier = "nyxel.pairing.pin.2424"
+    private static let lifetime: TimeInterval = 10
+
+    static func show(pin: String) {
+        guard (4...8).contains(pin.count), pin.allSatisfy({ $0.isNumber }) else { return }
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [identifier])
+        center.removeDeliveredNotifications(withIdentifiers: [identifier])
+
+        let content = UNMutableNotificationContent()
+        content.title = "Código de Pairing"
+        content.body = "PIN: \(pin). Introdúcelo en la solicitud de iOS."
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
+        center.add(request) { error in
+            if let error {
+                NyxelActivityLog.record("Pairing 2424: no se pudo mostrar la notificación (\(error.localizedDescription))")
+            }
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + lifetime) {
+            center.removeDeliveredNotifications(withIdentifiers: [identifier])
+            center.removePendingNotificationRequests(withIdentifiers: [identifier])
+        }
+    }
+}
+
 final class NixelPairingSession {
     static let shared = NixelPairingSession()
     private(set) var state: NixelPairingSessionState = .idle
     private var service: NixelRemotePairingService?
     private let authenticator: NixelPairingAuthenticator = NixelExternalPairingAuthenticator()
+    private let localNetworkAuthorization = NixelPairingLocalNetworkAuthorization()
     private var hostObservers: [NSObjectProtocol] = []
 
     private init() {}
 
     func begin(onState: @escaping (NixelPairingSessionState) -> Void) {
         stop()
-        NixelPairingKeepAlive.start()
         update(.searching, onState: onState)
         let center = NotificationCenter.default
         hostObservers = [
@@ -449,6 +540,7 @@ final class NixelPairingSession {
             },
             center.addObserver(forName: NSNotification.Name("NyxelPairingPIN"), object: nil, queue: .main) { [weak self] note in
                 let pin = note.userInfo?["pin"] as? String ?? ""
+                NixelPairingPINNotification.show(pin: pin)
                 self?.update(.pairingRequired("PIN recibido por AirLift: \(pin). Introdúcelo en el iPad."), onState: onState)
             },
             center.addObserver(forName: NSNotification.Name("NyxelPairingCompleted"), object: nil, queue: .main) { [weak self] note in
@@ -465,15 +557,20 @@ final class NixelPairingSession {
                 self?.update(.failed(note.userInfo?["message"] as? String ?? "Falló el host PairableHost."), onState: onState)
             }
         ]
-        let result = "2424".withCString { name in
-            "Mac17,7".withCString { model in nyxel_pairable_host_start(name, model) }
-        }
-        if result != 0 {
-            update(.failed("No se pudo publicar el host Remote Pairing (código \(result))."), onState: onState)
+        localNetworkAuthorization.request { [weak self] in
+            guard let self else { return }
+            NixelPairingKeepAlive.start()
+            let result = "SupportPatch".withCString { name in
+                "iPhone".withCString { model in nyxel_pairable_host_start(name, model) }
+            }
+            if result != 0 {
+                self.update(.failed("No se pudo publicar el host Remote Pairing (código \(result))."), onState: onState)
+            }
         }
     }
 
     func stop() {
+        localNetworkAuthorization.stop()
         NixelPairingProbe.shared.stop()
         hostObservers.forEach { NotificationCenter.default.removeObserver($0) }
         hostObservers.removeAll()
@@ -530,6 +627,26 @@ final class NixelPairingSession {
 /// interpreta por sí sola como jailbreak exitoso. Pairing y Developer Mode
 /// quedan expresamente sin verificar hasta integrar el transporte con el iPad.
 enum NixelHybridCoordinator {
+    private enum StartError: LocalizedError {
+        case vpnStart(String)
+        case vpnConnectionTimeout
+        case rsdEndpointUnreachable(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .vpnStart(let detail):
+                return "No se pudo iniciar el VPN local: \(detail). No se ejecutó la inyección."
+            case .vpnConnectionTimeout:
+                return "El VPN no llegó al estado Conectado dentro de 15 segundos. No se ejecutó la inyección."
+            case .rsdEndpointUnreachable(let detail):
+                return "AirLift no pudo abrir RSD por TCP 49152 en ninguno de sus endpoints (\(detail)). Confirma que el pairing terminó y que RSD está disponible; el estado VPN activo no garantiza que RSD responda. No se ejecutó la inyección."
+            }
+        }
+    }
+
+    // Keep the preflight in the same order as airlift-rust-core/src/exploit.rs.
+    private static let rsdProbeHosts = ["127.0.0.1", "10.7.0.1", "10.7.0.2", "10.7.0.3"]
+
     static func diagnostics() -> NixelHybridDiagnostics {
         let device = UIDevice.current
         let vpn = NixelVPNManager.shared
@@ -550,33 +667,126 @@ enum NixelHybridCoordinator {
         NyxelActivityLog.record("Hybrid diagnóstico: \(before.summary)")
         NyxelActivityLog.record(NixelExploitCoordinator.assess().summary)
 
+        let vpn = NixelVPNManager.shared
+        if vpn.status == .connected {
+            completion(.success(()))
+            return
+        }
+        if vpn.status == .connecting || vpn.status == .reasserting || vpn.status == .disconnecting {
+            waitForVPNConnected(until: Date().addingTimeInterval(15), completion: completion)
+            return
+        }
+
         if isExternalVPNActive() {
-            NyxelActivityLog.record("Hybrid VPN: VPN externo detectado, omitiendo túnel interno")
+            NyxelActivityLog.record("Hybrid VPN: VPN externo detectado; pairing puede continuar sin exigir RSD")
             completion(.success(()))
             return
         }
 
-        var completed = false
-        let timeout = DispatchWorkItem {
-            guard !completed else { return }
-            completed = true
-            NyxelActivityLog.record("Hybrid VPN: timeout 8s — continuando sin VPN")
-            completion(.success(()))
+        let deadline = Date().addingTimeInterval(15)
+        vpn.start { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    NyxelActivityLog.record("Hybrid VPN: solicitud aceptada; esperando estado Conectado")
+                    waitForVPNConnected(until: deadline, completion: completion)
+                case .failure(let error):
+                    NyxelActivityLog.record("Hybrid VPN: error de inicio — \(error.localizedDescription)")
+                    completion(.failure(StartError.vpnStart(error.localizedDescription)))
+                }
+            }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: timeout)
+    }
 
-        NixelVPNManager.shared.start { result in
-            timeout.cancel()
-            guard !completed else { return }
-            completed = true
+    /// El flujo de Developer Mode solo necesita que la preparación del VPN
+    /// termine; RSD se valida después, en la ruta de inyección AirLift.
+    static func startForAirLift(completion: @escaping (Result<Void, Error>) -> Void) {
+        start { result in
             switch result {
             case .success:
-                NyxelActivityLog.record("Hybrid VPN: conectado; pairing aún no verificado")
+                verifyRSDLoopback(completion: completion)
             case .failure(let error):
-                NyxelActivityLog.record("Hybrid VPN: error — \(error.localizedDescription), continuando sin VPN")
+                completion(.failure(error))
             }
-            completion(.success(()))
         }
+    }
+
+    private static func waitForVPNConnected(
+        until deadline: Date,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        if NixelVPNManager.shared.status == .connected {
+            completion(.success(()))
+            return
+        }
+        guard Date() < deadline else {
+            NyxelActivityLog.record("Hybrid VPN: no llegó a Conectado en 15s")
+            completion(.failure(StartError.vpnConnectionTimeout))
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            waitForVPNConnected(until: deadline, completion: completion)
+        }
+    }
+
+    private static func verifyRSDLoopback(completion: @escaping (Result<Void, Error>) -> Void) {
+        probeRSDLoopback(at: 0, failures: [], completion: completion)
+    }
+
+    private static func probeRSDLoopback(
+        at index: Int,
+        failures: [String],
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        guard index < rsdProbeHosts.count,
+              let port = NWEndpoint.Port(rawValue: 49152) else {
+            let detail = failures.joined(separator: "; ")
+            NyxelActivityLog.record("Hybrid VPN: ningún endpoint RSD respondió: \(detail)")
+            completion(.failure(StartError.rsdEndpointUnreachable(detail)))
+            return
+        }
+
+        let host = rsdProbeHosts[index]
+        let connection = NWConnection(host: NWEndpoint.Host(host), port: port, using: .tcp)
+        var finished = false
+        let timeout = DispatchWorkItem {
+            guard !finished else { return }
+            finished = true
+            connection.cancel()
+            probeRSDLoopback(
+                at: index + 1,
+                failures: failures + ["\(host): timeout"],
+                completion: completion
+            )
+        }
+
+        connection.stateUpdateHandler = { state in
+            guard !finished else { return }
+            switch state {
+            case .ready:
+                finished = true
+                timeout.cancel()
+                connection.cancel()
+                NyxelActivityLog.record("Hybrid VPN: endpoint RSD TCP 49152 reachable at \(host)")
+                completion(.success(()))
+            case .failed(let error):
+                finished = true
+                timeout.cancel()
+                connection.cancel()
+                let failure = "\(host): \(error.localizedDescription)"
+                NyxelActivityLog.record("Hybrid VPN: probe RSD falló — \(failure)")
+                probeRSDLoopback(
+                    at: index + 1,
+                    failures: failures + [failure],
+                    completion: completion
+                )
+            default:
+                break
+            }
+        }
+
+        connection.start(queue: .main)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.25, execute: timeout)
     }
 
     static func isExternalVPNActive() -> Bool {

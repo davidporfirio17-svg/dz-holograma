@@ -1,6 +1,6 @@
 import NetworkExtension
 
-/// Túnel local: el iPhone se habla a sí mismo a través de 10.7.0.1.
+/// Túnel local para los endpoints RSD de AirLift (10.7.0.1–10.7.0.3).
 /// Cada paquete IPv4 vuelve por el mismo túnel con origen y destino intercambiados.
 final class PacketTunnelProvider: NEPacketTunnelProvider {
     private var interfaceAddress = "10.7.1.1"
@@ -13,7 +13,11 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
         let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: peerAddress)
         let ipv4 = NEIPv4Settings(addresses: [interfaceAddress], subnetMasks: ["255.255.255.255"])
-        ipv4.includedRoutes = [NEIPv4Route(destinationAddress: peerAddress, subnetMask: "255.255.255.255")]
+        var loopbackHosts: Set<String> = ["10.7.0.1", "10.7.0.2", "10.7.0.3"]
+        loopbackHosts.insert(peerAddress)
+        ipv4.includedRoutes = loopbackHosts.sorted().map {
+            NEIPv4Route(destinationAddress: $0, subnetMask: "255.255.255.255")
+        }
         ipv4.excludedRoutes = [NEIPv4Route.default()]
         settings.ipv4Settings = ipv4
         setTunnelNetworkSettings(settings) { [weak self] error in

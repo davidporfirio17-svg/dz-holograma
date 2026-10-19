@@ -67,7 +67,7 @@ final class DavizinHeaderView: UIView {
         layer.cornerRadius = 18.0
         layer.cornerCurve = .continuous
         layer.borderWidth = 1.0
-        layer.borderColor = UIColor.white.withAlphaComponent(0.08).cgColor
+        layer.borderColor = AppTheme.hairlineStrong.cgColor
 
         statusDot.translatesAutoresizingMaskIntoConstraints = false
         statusDot.backgroundColor = AppTheme.accent
@@ -123,8 +123,8 @@ final class DavizinHeaderView: UIView {
 		systemLabel.adjustsFontSizeToFitWidth = true
 		systemLabel.minimumScaleFactor = 0.75
 		let systemIsSupported = NyxelSupportPolicy.isCurrentSystemSupported
-		systemLabel.text = "iOS/iPadOS \(NyxelSupportPolicy.currentSystemDescription) • \(systemIsSupported ? "Compatible" : "No compatible")"
-		systemLabel.textColor = systemIsSupported ? AppTheme.success : AppTheme.failure
+		systemLabel.text = "iOS/iPadOS \(NyxelSupportPolicy.currentSystemDescription) • \(systemIsSupported ? "Sistema admitido · acceso pendiente" : "No compatible")"
+		systemLabel.textColor = systemIsSupported ? AppTheme.accentWarm : AppTheme.failure
 		addSubview(systemLabel)
 
 		NSLayoutConstraint.activate([
@@ -169,7 +169,7 @@ final class DavizinHeaderView: UIView {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.setImage(UIImage(systemName: imageName), for: .normal)
         button.tintColor = AppTheme.secondaryText
-        button.backgroundColor = UIColor.white.withAlphaComponent(0.06)
+        button.backgroundColor = AppTheme.background
         button.layer.cornerRadius = 12.0
         button.accessibilityTraits = .button
         button.addTarget(self, action: #selector(iconButtonTapped(_:)), for: .touchUpInside)

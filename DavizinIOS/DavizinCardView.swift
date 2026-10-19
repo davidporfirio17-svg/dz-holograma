@@ -1,7 +1,7 @@
 import UIKit
 
 final class DavizinCardView: UIView {
-    private let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
+    private let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
     private let contentView = UIView()
     private let glassHighlight = CAGradientLayer()
     private var contentConstraints: [NSLayoutConstraint] = []
@@ -29,6 +29,12 @@ final class DavizinCardView: UIView {
         super.layoutSubviews()
         layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: AppTheme.cardCornerRadius).cgPath
         glassHighlight.frame = bounds
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else { return }
+        layer.borderColor = AppTheme.hairlineStrong.resolvedColor(with: traitCollection).cgColor
     }
 
     func addContent(_ view: UIView) {
@@ -64,7 +70,7 @@ final class DavizinCardView: UIView {
         layer.cornerCurve = .continuous
         layer.masksToBounds = false
         layer.borderWidth = 1.0
-        layer.borderColor = UIColor.white.withAlphaComponent(0.18).cgColor
+        layer.borderColor = AppTheme.hairlineStrong.resolvedColor(with: traitCollection).cgColor
         layer.shadowColor = UIColor.black.cgColor
         layer.shadowOpacity = 0.22
         layer.shadowRadius = 18.0

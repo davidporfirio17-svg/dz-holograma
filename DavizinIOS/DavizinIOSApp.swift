@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct DZHologramaApp: App {
+struct DavizinIOSApp: App {
     @StateObject var appState = AppState()
     
     var body: some Scene {

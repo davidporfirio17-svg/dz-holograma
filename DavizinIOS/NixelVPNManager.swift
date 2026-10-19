@@ -50,6 +50,9 @@ final class NixelVPNManager: NSObject {
                     "TunnelPeerIP": "10.7.0.1/32",
                     "HybridMode": true
                 ]
+                proto.includeAllNetworks = false
+                // Keep the system's primary route (including cellular data) in control.
+                proto.enforceRoutes = false
                 m.protocolConfiguration = proto
                 m.localizedDescription = "Nixel External Hybrid"
                 m.isEnabled = true

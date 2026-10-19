@@ -65,6 +65,12 @@ final class DavizinButton: UIButton {
         loginGradient.cornerRadius = layer.cornerRadius
     }
 
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else { return }
+        updateAppearance()
+    }
+
     func setButtonStyle(_ style: DavizinButtonStyle) {
         self.style = style
         updateAppearance()
@@ -126,13 +132,13 @@ final class DavizinButton: UIButton {
 
         switch style {
         case .primary:
-            baseColor = AppTheme.accent
-            titleColor = AppTheme.background
-            borderColor = AppTheme.accent
+            baseColor = AppTheme.readableAccent
+            titleColor = AppTheme.accentForeground
+            borderColor = AppTheme.readableAccent
         case .secondary:
-            baseColor = selectedVisual ? AppTheme.accent : AppTheme.control
-            titleColor = selectedVisual ? AppTheme.background : AppTheme.primaryText
-            borderColor = selectedVisual ? AppTheme.accent : UIColor.white.withAlphaComponent(0.10)
+            baseColor = selectedVisual ? AppTheme.readableAccent : AppTheme.control
+            titleColor = selectedVisual ? AppTheme.accentForeground : AppTheme.primaryText
+            borderColor = selectedVisual ? AppTheme.readableAccent : AppTheme.hairlineStrong
         case .destructive:
             baseColor = UIColor(red: 0.20, green: 0.05, blue: 0.06, alpha: 1.0)
             titleColor = UIColor(red: 1.0, green: 0.55, blue: 0.48, alpha: 1.0)
@@ -145,9 +151,9 @@ final class DavizinButton: UIButton {
         if usesLoginEmphasis && style == .primary {
             loginGradient.isHidden = false
             loginGradient.colors = [
-                AppTheme.accentDim.withAlphaComponent(visualAlpha).cgColor,
-                AppTheme.accent.withAlphaComponent(visualAlpha).cgColor,
-                AppTheme.accentHot.withAlphaComponent(visualAlpha).cgColor
+                AppTheme.readableAccent.withAlphaComponent(0.40 * visualAlpha).cgColor,
+                AppTheme.readableAccent.withAlphaComponent(0.82 * visualAlpha).cgColor,
+                AppTheme.readableAccent.withAlphaComponent(visualAlpha).cgColor
             ]
             backgroundColor = UIColor.clear
         } else {
@@ -157,7 +163,7 @@ final class DavizinButton: UIButton {
         setTitleColor(titleColor.withAlphaComponent(visualAlpha), for: .normal)
         layer.borderWidth = selectedVisual || style != .secondary ? 1.0 : 0.0
         layer.borderColor = borderColor.withAlphaComponent(visualAlpha).cgColor
-        layer.shadowColor = selectedVisual || style == .primary ? AppTheme.accent.cgColor : UIColor.clear.cgColor
+        layer.shadowColor = selectedVisual || style == .primary ? AppTheme.readableAccent.cgColor : UIColor.clear.cgColor
         layer.shadowOpacity = selectedVisual || style == .primary ? 0.28 : 0.0
         layer.shadowRadius = usesLoginEmphasis ? 18.0 : 14.0
         layer.shadowOffset = CGSize(width: 0, height: usesLoginEmphasis ? 7.0 : 6.0)

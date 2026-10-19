@@ -37,21 +37,92 @@ enum NyxelDeviceInfo {
     }
     
     static var deviceModel: String {
-        switch displayMachineName {
-        // iPhone Pro models
-        case "iPhone15,2": return "iPhone 14 Pro"
-        case "iPhone15,3": return "iPhone 14 Pro Max"
-        case "iPhone16,1": return "iPhone 15 Pro"
-        case "iPhone16,2": return "iPhone 15 Pro Max"
-        // iPhone standard models
+        modelName(for: displayMachineName)
+    }
+
+    /// Traduce el identificador de hardware devuelto por `uname().machine` al nombre comercial.
+    /// El identificador del bundle corresponde a la app, no al modelo del dispositivo.
+    static func modelName(for hardwareIdentifier: String) -> String {
+        switch hardwareIdentifier {
+        case "iPhone12,1": return "iPhone 11"
+        case "iPhone12,3": return "iPhone 11 Pro"
+        case "iPhone12,5": return "iPhone 11 Pro Max"
+        case "iPhone12,8": return "iPhone SE (2.ª generación)"
+
+        case "iPhone13,1": return "iPhone 12 mini"
+        case "iPhone13,2": return "iPhone 12"
+        case "iPhone13,3": return "iPhone 12 Pro"
+        case "iPhone13,4": return "iPhone 12 Pro Max"
+
         case "iPhone14,4": return "iPhone 13 mini"
         case "iPhone14,5": return "iPhone 13"
-        case "iPhone15,4": return "iPhone 14"
-        case "iPhone15,5": return "iPhone 14 Plus"
-        case "iPhone16,3": return "iPhone 15"
-        case "iPhone16,4": return "iPhone 15 Plus"
-        // Fallback
-        default: return displayMachineName
+        case "iPhone14,2": return "iPhone 13 Pro"
+        case "iPhone14,3": return "iPhone 13 Pro Max"
+        case "iPhone14,6": return "iPhone SE (3.ª generación)"
+
+        case "iPhone14,7": return "iPhone 14"
+        case "iPhone14,8": return "iPhone 14 Plus"
+        case "iPhone15,2": return "iPhone 14 Pro"
+        case "iPhone15,3": return "iPhone 14 Pro Max"
+
+        case "iPhone15,4": return "iPhone 15"
+        case "iPhone15,5": return "iPhone 15 Plus"
+        case "iPhone16,1": return "iPhone 15 Pro"
+        case "iPhone16,2": return "iPhone 15 Pro Max"
+
+        case "iPhone17,3": return "iPhone 16"
+        case "iPhone17,4": return "iPhone 16 Plus"
+        case "iPhone17,1": return "iPhone 16 Pro"
+        case "iPhone17,2": return "iPhone 16 Pro Max"
+        case "iPhone17,5": return "iPhone 16e"
+
+        case "iPhone18,3": return "iPhone 17"
+        case "iPhone18,1": return "iPhone 17 Pro"
+        case "iPhone18,2": return "iPhone 17 Pro Max"
+        case "iPhone18,4": return "iPhone Air"
+        case "iPhone18,5": return "iPhone 17e"
+
+        case "iPhone19,2": return "iPhone 18 Pro"
+        case "iPhone19,3", "iPhone19,7": return "iPhone 18 Pro Max"
+        case "iPhone19,4": return "iPhone Duo"
+
+        case "iPad17,1", "iPad17,2": return "iPad Pro 11″ (M5)"
+        case "iPad17,3", "iPad17,4": return "iPad Pro 13″ (M5)"
+        case "iPad16,8", "iPad16,9": return "iPad Air 11″ (M4)"
+        case "iPad16,10", "iPad16,11": return "iPad Air 13″ (M4)"
+        case "iPad15,3", "iPad15,4": return "iPad Air 11″ (M3)"
+        case "iPad15,5", "iPad15,6": return "iPad Air 13″ (M3)"
+        case "iPad15,7", "iPad15,8": return "iPad (A16)"
+        case "iPad16,1", "iPad16,2": return "iPad mini (A17 Pro)"
+        case "iPad16,3", "iPad16,4": return "iPad Pro 11″ (M4)"
+        case "iPad16,5", "iPad16,6": return "iPad Pro 13″ (M4)"
+        case "iPad14,8", "iPad14,9": return "iPad Air 11″ (M2)"
+        case "iPad14,10", "iPad14,11": return "iPad Air 13″ (M2)"
+        case "iPad13,18", "iPad13,19": return "iPad (10.ª generación)"
+        case "iPad14,3", "iPad14,4": return "iPad Pro 11″ (4.ª generación)"
+        case "iPad14,5", "iPad14,6": return "iPad Pro 12,9″ (6.ª generación)"
+        case "iPad13,16", "iPad13,17": return "iPad Air (5.ª generación)"
+        case "iPad12,1", "iPad12,2": return "iPad (9.ª generación)"
+        case "iPad14,1", "iPad14,2": return "iPad mini (6.ª generación)"
+        case "iPad13,8", "iPad13,9", "iPad13,10", "iPad13,11": return "iPad Pro 12,9″ (5.ª generación)"
+        case "iPad13,4", "iPad13,5", "iPad13,6", "iPad13,7": return "iPad Pro 11″ (3.ª generación)"
+        case "iPad13,1", "iPad13,2": return "iPad Air (4.ª generación)"
+        case "iPad11,6", "iPad11,7": return "iPad (8.ª generación)"
+        case "iPad8,11", "iPad8,12": return "iPad Pro 12,9″ (4.ª generación)"
+        case "iPad8,9", "iPad8,10": return "iPad Pro 11″ (2.ª generación)"
+        case "iPad7,11", "iPad7,12": return "iPad (7.ª generación)"
+        case "iPad11,3", "iPad11,4": return "iPad Air (3.ª generación)"
+        case "iPad11,1", "iPad11,2": return "iPad mini (5.ª generación)"
+        case "iPad8,5", "iPad8,6", "iPad8,7", "iPad8,8": return "iPad Pro 12,9″ (3.ª generación)"
+        case "iPad8,1", "iPad8,2", "iPad8,3", "iPad8,4": return "iPad Pro 11″ (1.ª generación)"
+        case "iPad7,5", "iPad7,6": return "iPad (6.ª generación)"
+        case "iPad7,1", "iPad7,2": return "iPad Pro 12,9″ (2.ª generación)"
+        case "iPad7,3", "iPad7,4": return "iPad Pro 10,5″"
+        case "iPad6,11", "iPad6,12": return "iPad (5.ª generación)"
+        case "iPad6,3", "iPad6,4": return "iPad Pro 9,7″"
+        case "iPad6,7", "iPad6,8": return "iPad Pro 12,9″ (1.ª generación)"
+        default:
+            return hardwareIdentifier.hasPrefix("iPad") ? "iPad (\(hardwareIdentifier))" : hardwareIdentifier
         }
     }
     
@@ -129,8 +200,33 @@ enum NyxelSupportPolicy {
         verifiedIOS27Builds.first { $0.build == build }?.publicBeta
     }
 
+    /// iOS 17–26 conserva la política amplia que ya utilizaba la aplicación.
+    /// En iOS 27 se exige un build conocido porque el acceso directo al
+    /// contenedor deja de ser una ruta fiable y debe usarse pairing + túnel.
     static func supportsVerifiedSystem(major: Int, minor: Int, patch: Int, build: String) -> Bool {
-        true
+        guard major >= 17 else { return false }
+        guard major == 27 else { return major <= 26 }
+        guard minor == 0 || minor == 2 else { return false }
+        if minor == 0 && patch == 1 && build == "24A446" {
+            return true
+        }
+        if minor == 2 {
+            return ["24B5084k", "24B5089g"].contains(build)
+        }
+        return verifiedIOS27Builds.contains { $0.build == build }
+            || ["24A435", "24A437"].contains(build)
+    }
+
+    /// Desde iOS 27, las operaciones sobre otro contenedor deben pasar por
+    /// un registro de pairing y el túnel RSD/AirLift.
+    static func requiresPairingTunnel(major: Int, minor: Int, patch: Int, build: String) -> Bool {
+        major >= 27
+    }
+
+    /// The bundled opa334 offset table is verified only through iOS 26.0.x.
+    /// Newer systems must use the supported pairing/AirLift route instead.
+    static func supportsKernelOffsets(major: Int, minor: Int) -> Bool {
+        major >= 17 && (major < 26 || (major == 26 && minor == 0))
     }
 
     static func isSupported(major: Int, minor: Int, patch: Int, build: String) -> Bool {
@@ -154,7 +250,7 @@ enum NyxelSupportPolicy {
     }
 
     static var supportedRangesDescription: String {
-        "iOS 17.0–17.7.x · iOS 18.0–18.7.1 · iOS 26.0–26.6.2 · iOS 27.0 builds verificados"
+        "iOS 17–26 · iOS 27.0/27.2 (solo builds verificados) · iOS 27.0.1 (24A446)"
     }
     
     // MARK: - Device Information

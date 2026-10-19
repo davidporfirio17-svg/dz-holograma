@@ -175,7 +175,7 @@ extension UIApplication {
     func logNyxelLaunchInfo() {
         nyxelLog("", level: "INFO") // Blank line
         nyxelLog("╔════════════════════════════════════════╗", level: "INFO")
-        nyxelLog("║         DZ HOLOGRAMA LAUNCHED        ║", level: "INFO")
+        nyxelLog("║         NYXEL EXTERNAL LAUNCHED        ║", level: "INFO")
         nyxelLog("╚════════════════════════════════════════╝", level: "INFO")
         nyxelLog(NyxelSupportPolicy.getFullSystemInfo(), level: "INFO")
     }

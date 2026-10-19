@@ -182,6 +182,13 @@ final class OperationView: UIView {
         }
     }
 
+    func setProgressMessage(_ message: String) {
+        guard case .injecting = operationState else { return }
+        statusLabel.text = message
+        statusLabel.isHidden = false
+        statusRow.isHidden = false
+    }
+
     func setOpeningGame(_ opening: Bool) {
         openGameButton.setLoading(opening, title: "ABRIENDO JUEGO...")
         openGameButton.isEnabled = !opening
