@@ -32,6 +32,10 @@
 		A92 = {isa=PBXBuildFile;fileRef=F92;};
 		A91 = {isa=PBXBuildFile;fileRef=F91;};
 		A103 = {isa=PBXBuildFile;fileRef=F103;};
+		A104 = {isa=PBXBuildFile;fileRef=F104;};
+		A105 = {isa=PBXBuildFile;fileRef=F105;};
+		A106 = {isa=PBXBuildFile;fileRef=F106;};
+		A107 = {isa=PBXBuildFile;fileRef=F107;};
 		A94 = {isa=PBXBuildFile;fileRef=F94;};
 		A97 = {isa=PBXBuildFile;fileRef=F97;};
 			A98 = {isa=PBXBuildFile;fileRef=F98;};
@@ -88,6 +92,10 @@
 			F101 = {isa=PBXFileReference;lastKnownFileType=sourcecode.c.h;path=GrappaHelper.h;sourceTree="<group>";};
 			F102 = {isa=PBXFileReference;lastKnownFileType=sourcecode.swift;path=HelpCenterView.swift;sourceTree="<group>";};
 			F103 = {isa=PBXFileReference;lastKnownFileType=sourcecode.swift;path=NyxelCellularPreflight.swift;sourceTree="<group>";};
+			F104 = {isa=PBXFileReference;lastKnownFileType=sourcecode.swift;path=NyxelAntiTamper.swift;sourceTree="<group>";};
+			F105 = {isa=PBXFileReference;lastKnownFileType=sourcecode.swift;path=NyxelBinaryIntegrity.swift;sourceTree="<group>";};
+			F106 = {isa=PBXFileReference;lastKnownFileType=sourcecode.swift;path=NyxelKeyEntanglement.swift;sourceTree="<group>";};
+			F107 = {isa=PBXFileReference;lastKnownFileType=sourcecode.swift;path=NyxelRuntimeState.swift;sourceTree="<group>";};
 			EF01 = {isa=PBXFileReference;lastKnownFileType=sourcecode.swift;path=PacketTunnelProvider.swift;sourceTree="<group>";};
 			EF02 = {isa=PBXFileReference;lastKnownFileType=text.plist.xml;path=Info.plist;sourceTree="<group>";};
 			EF03 = {isa=PBXFileReference;lastKnownFileType=text.plist.entitlements;path=ExternalTunnel.entitlements;sourceTree="<group>";};
@@ -113,7 +121,7 @@
 		PH_EB = {isa=PBXCopyFilesBuildPhase;buildActionMask=2147483647;dstPath="";dstSubfolderSpec=13;files=(AEXT);name="Embed Foundation Extensions";runOnlyForDeploymentPostprocessing=0;};
 /* PBXGroup */
 			GRP_M = {isa=PBXGroup;children=(GRP_S,GRP_E,GRP_P);sourceTree="<group>";};
-				GRP_S = {isa=PBXGroup;children=(F01,F02,F03,F04,F05,F06,F07,F08,F09,F10,F11,F12,F13,F14,F15,F16,F17,F18,F19,F20,F21,F22,F23,F24,F25,F26,F27,F28,F29,F30,F31,F32,F33,F99,F98,F93,F94,F95,F96,F97,F92,F91,F100,F101,F102,F103,FR1,FR3,FR4,FR5);path=DavizinIOS;sourceTree="<group>";};
+				GRP_S = {isa=PBXGroup;children=(F01,F02,F03,F04,F05,F06,F07,F08,F09,F10,F11,F12,F13,F14,F15,F16,F17,F18,F19,F20,F21,F22,F23,F24,F25,F26,F27,F28,F29,F30,F31,F32,F33,F99,F98,F93,F94,F95,F96,F97,F92,F91,F100,F101,F102,F103,F104,F105,F106,F107,FR1,FR3,FR4,FR5);path=DavizinIOS;sourceTree="<group>";};
 		GRP_P = {isa=PBXGroup;children=(PROD,EXTP);name=Products;sourceTree="<group>";};
 		GRP_E = {isa=PBXGroup;children=(EF01,EF02,EF03);path=ExternalTunnel;sourceTree="<group>";};
 /* PBXNativeTarget */
@@ -150,7 +158,7 @@
 		PH_S = {
 			isa=PBXSourcesBuildPhase;
 				buildActionMask=2147483647;
-					files=(A01,A02,A03,A04,A05,A06,A07,A08,A09,A10,A11,A12,A13,A14,A15,A16,A17,A19,A20,A21,A22,A23,A24,A25,A26,A27,A28,A29,A30,A99,A98,A93,A94,A97,A92,A91,A100,A101,A103);
+					files=(A01,A02,A03,A04,A05,A06,A07,A08,A09,A10,A11,A12,A13,A14,A15,A16,A17,A19,A20,A21,A22,A23,A24,A25,A26,A27,A28,A29,A30,A99,A98,A93,A94,A97,A92,A91,A100,A101,A103,A104,A105,A106,A107);
 			runOnlyForDeploymentPostprocessing=0;
 		};
 		PH_ES = {isa=PBXSourcesBuildPhase;buildActionMask=2147483647;files=(AE01);runOnlyForDeploymentPostprocessing=0;};
@@ -206,6 +214,14 @@
 				SWIFT_OBJC_BRIDGING_HEADER="DavizinIOS/DavizinIOS-Bridging-Header.h";
 				SWIFT_VERSION=5.0;
 				TARGETED_DEVICE_FAMILY="1,2";
+				DEPLOYMENT_POSTPROCESSING=YES;
+				STRIP_INSTALLED_PRODUCT=YES;
+				STRIP_SWIFT_SYMBOLS=YES;
+				STRIP_STYLE="non-global";
+				COPY_PHASE_STRIP=YES;
+				SWIFT_OPTIMIZATION_LEVEL="-O";
+				GCC_OPTIMIZATION_LEVEL=s;
+				SWIFT_COMPILATION_MODE=wholemodule;
 			};
 			name=Release;
 		};

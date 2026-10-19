@@ -19,6 +19,14 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        // Defensa anti-tamper lo más temprano posible.
+        NyxelAntiTamper.denyPtraceAttach()
+        let verdict = NyxelAntiTamper.inspect()
+        if case .suspect(let code) = verdict {
+            NyxelRuntimeState.shared.markTampered(code: code)
+        }
+        _ = NyxelBinaryIntegrity.verify()
+
         // Initialize Nyxel logging and system detection
         _ = retainGrappaTokenSymbol(0, 0, 0, nil, 0, nil, nil, 0)
         UNUserNotificationCenter.current().delegate = self

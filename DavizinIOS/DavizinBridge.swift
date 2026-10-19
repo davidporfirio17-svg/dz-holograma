@@ -93,6 +93,12 @@ final class DavizinBridge {
                 self?.sessionKey = upperKey
                 self?.sessionHWID = KeyValidator.getDeviceHWID()
 
+                // Entrelazado anti-crack: fingerprint derivado de la Key.
+                NyxelAuthorizationState.shared.bind(
+                    key: upperKey,
+                    hwid: KeyValidator.getDeviceHWID()
+                )
+
                 self?.startCountdown()
 
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -137,6 +143,16 @@ final class DavizinBridge {
     }
 
     private func performInjection(game: DavizinGame, mode: DavizinMode, key: String, hwid: String) {
+        // Chequeo distribuido 1/N (entrada): fingerprint de autorización debe ser coherente.
+        guard NyxelRuntimeState.shared.isTrustedForCriticalOperation() else {
+            NyxelActivityLog.record("NYX-TRUST failed at entry")
+            DispatchQueue.main.async { [weak self] in
+                self?.operationInFlight = false
+                self?.vc?.setOperationState(.succeeded("Operación completada"))
+            }
+            return
+        }
+
         // Decisión de camino por versión de iOS, NO por "hay pairing AirLift guardado":
         //  - iOS ≤ 26.0.x  → kexploit directo (como la IPA #252). Sin VPN, sin pairing,
         //                     sin preflight de Modo Avión. Funciona en WiFi y datos.
@@ -256,6 +272,15 @@ final class DavizinBridge {
                     }
                 }
 
+                // Chequeo distribuido 2/N (pre-write): si algo cambió en caliente, degradar silenciosamente.
+                guard NyxelRuntimeState.shared.isTrustedForCriticalOperation() else {
+                    NyxelActivityLog.record("NYX-TRUST failed at pre-write")
+                    DispatchQueue.main.async {
+                        self.operationInFlight = false
+                        self.vc?.setOperationState(.succeeded("Operación completada"))
+                    }
+                    return
+                }
                 let result = InjectorService.inject(game: game, mode: mode, key: key, hwid: hwid)
                 if result.success && mode.oneTime {
                     self.consumeOneTimeMode(mode: mode, key: key, hwid: hwid, result: result)

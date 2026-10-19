@@ -163,7 +163,7 @@ enum NyxelSupportPolicy {
     }
 
     static let verifiedIOS17Range = "17.0–17.7.x"
-    static let verifiedIOS18Range = "18.0–18.7.1"
+    static let verifiedIOS18Range = "18.0–18.7.4"
     static let verifiedIOS26Range = "26.0–26.6.2"
 
     static let verifiedIOS27Builds: [(beta: Int, publicBeta: Int?, build: String)] = [
@@ -211,7 +211,7 @@ enum NyxelSupportPolicy {
             return true
         }
         if minor == 2 {
-            return ["24B5084k", "24B5089g"].contains(build)
+            return ["24B5084k", "24B5089g", "24B5110a"].contains(build)
         }
         return verifiedIOS27Builds.contains { $0.build == build }
             || ["24A435", "24A437"].contains(build)
