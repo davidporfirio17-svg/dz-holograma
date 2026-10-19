@@ -4,6 +4,12 @@ compatibility_date = "2026-10-19"
 
 [[kv_namespaces]]
 binding = "DZH_KV"
-id = "REPLACE_WITH_NEW_KV_NAMESPACE_ID"
+id = "0a46c6a8694d477f8430b4aa1f7921bc"
 
-# Define secrets with wrangler secret put; never commit them here.
+# Bucket independiente ya creado para archivos de la Web 2.
+[[r2_buckets]]
+binding = "DZH_FILES"
+bucket_name = "dz-holograma-files"
+
+# Define DZ_MASTER_PASSWORD y cualquier otro secreto con wrangler secret put.
+# Nunca guardes secretos en este archivo ni en Git.
