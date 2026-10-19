@@ -1,0 +1,138 @@
+name: Build DZ Holograma IPA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-dz-holograma-ipa
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build unsigned iOS IPA
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - name: Checkout source and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build AirLiftFFI transport backend
+        run: |
+          set -euo pipefail
+          rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+          cargo build \
+            --manifest-path airlift-rust-core/Cargo.toml \
+            --release \
+            --target aarch64-apple-ios
+          cargo build \
+            --manifest-path airlift-rust-core/Cargo.toml \
+            --release \
+            --target aarch64-apple-ios-sim
+          test -f airlift-rust-core/target/aarch64-apple-ios/release/libairlift_ffi.a
+          test -f airlift-rust-core/target/aarch64-apple-ios-sim/release/libairlift_ffi.a
+          rm -rf /tmp/airlift /tmp/AirliftFFI.xcframework
+          mkdir -p /tmp/airlift
+          cp airlift-rust-core/target/aarch64-apple-ios/release/libairlift_ffi.a /tmp/airlift/
+          cp airlift-rust-core/include/airlift.h airlift-rust-core/include/module.modulemap /tmp/airlift/
+          xcodebuild -create-xcframework \
+            -library airlift-rust-core/target/aarch64-apple-ios/release/libairlift_ffi.a \
+            -headers airlift-rust-core/include \
+            -library airlift-rust-core/target/aarch64-apple-ios-sim/release/libairlift_ffi.a \
+            -headers airlift-rust-core/include \
+            -output /tmp/AirliftFFI.xcframework
+          cp -R /tmp/AirliftFFI.xcframework /tmp/airlift/
+
+      - name: Ensure Xcode references for exploit and bridge sources
+        run: |
+          gem install xcodeproj --no-document
+          ruby <<'RUBY'
+          require "xcodeproj"
+          project = Xcodeproj::Project.open("DavizinIOS.xcodeproj")
+          target = project.targets.find { |item| item.name == "DavizinIOS" }
+          raise "DavizinIOS target not found" unless target
+          group = project.main_group["DavizinIOS"] || project.main_group
+          exploit_group = group["kexploit"] || group.new_group("kexploit", "kexploit")
+          Dir.glob("DavizinIOS/kexploit/*.{m,h,c}").sort.each do |file|
+            basename = File.basename(file)
+            next if exploit_group.files.any? { |item| item.path == basename }
+            reference = exploit_group.new_file(basename)
+            target.add_file_references([reference]) if file.end_with?(".m", ".c")
+          end
+          bridge = group.files.find { |item| item.path.end_with?("mcm_bridge.m") }
+          unless bridge
+            bridge = group.new_file("mcm_bridge.m")
+            target.add_file_references([bridge])
+          end
+          project.save
+          RUBY
+
+      - name: Build app for iPhoneOS
+        run: |
+          set +e
+          xcodebuild \
+            -project DavizinIOS.xcodeproj \
+            -scheme DavizinIOS \
+            -configuration Release \
+            -sdk iphoneos \
+            -arch arm64 \
+            IPHONEOS_DEPLOYMENT_TARGET=16.0 \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            ONLY_ACTIVE_ARCH=NO \
+            ALWAYS_SEARCH_USER_PATHS=NO \
+            BUILD_DIR=/tmp/davizin_build \
+            LIBRARY_SEARCH_PATHS=/tmp/airlift \
+            FRAMEWORK_SEARCH_PATHS=/tmp/airlift \
+            build > /tmp/build.log 2>&1
+          status=$?
+          set -e
+          tail -n 150 /tmp/build.log || true
+          if [ "$status" -ne 0 ]; then
+            echo "::error::xcodebuild failed with status $status"
+            grep -iE "error:|fatal error|undefined symbol" /tmp/build.log | sort -u | head -30 || true
+            exit "$status"
+          fi
+
+      - name: Set build number and embed app entitlements
+        run: |
+          set -euo pipefail
+          APP=$(find /tmp/davizin_build -name "*.app" -not -path "*/simulator/*" -type d | head -1)
+          test -n "$APP"
+          /usr/libexec/PlistBuddy -c "Delete :NyxelBuildNumber" "$APP/Info.plist" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :NyxelBuildNumber string ${GITHUB_RUN_NUMBER}" "$APP/Info.plist"
+          brew install ldid
+          BINARY="$APP/$(defaults read "$APP/Info.plist" CFBundleExecutable)"
+          ldid -SDavizinIOS/DavizinIOS.entitlements "$BINARY"
+          TUNNEL_APPEX="$APP/PlugIns/ExternalTunnel.appex"
+          if [ -d "$TUNNEL_APPEX" ]; then
+            TUNNEL_BINARY="$TUNNEL_APPEX/$(defaults read "$TUNNEL_APPEX/Info.plist" CFBundleExecutable)"
+            ldid -SExternalTunnel/ExternalTunnel.entitlements "$TUNNEL_BINARY"
+          fi
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP=$(find /tmp/davizin_build -name "*.app" -not -path "*/simulator/*" -type d | head -1)
+          test -n "$APP"
+          rm -rf /tmp/Payload /tmp/DZ_Holograma_unsigned.ipa
+          mkdir -p /tmp/Payload
+          cp -R "$APP" /tmp/Payload/DavizinIOS.app
+          cd /tmp
+          zip -qr DZ_Holograma_unsigned.ipa Payload/
+          ls -lh /tmp/DZ_Holograma_unsigned.ipa
+          unzip -t /tmp/DZ_Holograma_unsigned.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DZ_Holograma_iOS_unsigned
+          path: /tmp/DZ_Holograma_unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
