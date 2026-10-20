@@ -6,7 +6,7 @@ import NetworkExtension
 /// de firma; sin ese entitlement iOS no puede crear la configuración VPN.
 final class NixelVPNManager: NSObject {
     static let shared = NixelVPNManager()
-    static let tunnelBundleIdentifier = "com.davidporfirio17.dzholograma.ExternalTunnel"
+    static let tunnelBundleIdentifier = "com.apple.mobile.MobileHouseArrest.ExternalTunnel"
 
     private(set) var manager: NETunnelProviderManager?
     private(set) var lastError: Error?

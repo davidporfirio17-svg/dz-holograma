@@ -89,7 +89,7 @@ static NSString *MCMSigningIdentifier(void) {
 }
 
 NSString *DavizinGetContainerPath(NSString *bundleID, NSString **outError) {
-    static const NSString *kRequiredID = @"com.davidporfirio17.dzholograma";
+    static const NSString *kRequiredID = @"com.apple.mobile.MobileHouseArrest";
     static const uint64_t kFlags = 0x900000000ULL;
     static const uint64_t kClass = 2;
 

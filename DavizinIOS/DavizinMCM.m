@@ -144,7 +144,7 @@ void DavizinReleaseContainerGrant(int64_t handle) {
 #pragma mark - Container path lookup (direct C API with persistent lease)
 
 NSString *DavizinGetContainerPath(NSString *bundleID, NSString **outError) {
-    static const NSString *kRequiredID = @"com.davidporfirio17.dzholograma";
+    static const NSString *kRequiredID = @"com.apple.mobile.MobileHouseArrest";
     static const uint64_t kFlags = 0x900000000ULL;
     static const uint64_t kClass = 2;
 

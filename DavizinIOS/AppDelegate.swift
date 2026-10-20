@@ -19,12 +19,21 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        // Defensa anti-tamper lo más temprano posible.
+        // Defensa anti-tamper lo más temprano posible: deniega engancharle un
+        // debugger. Debe ser la PRIMERA línea del app antes de cualquier otra cosa.
         NyxelAntiTamper.denyPtraceAttach()
+
+        // Si hay señales obvias de debugger/Frida/MobileSubstrate cargados,
+        // registramos un flag en memoria. La operación de inyección lo lee y
+        // degrada silenciosamente (sin mensaje al usuario, para no delatarle al
+        // atacante qué disparó la detección).
         let verdict = NyxelAntiTamper.inspect()
         if case .suspect(let code) = verdict {
             NyxelRuntimeState.shared.markTampered(code: code)
         }
+
+        // Medir hash del __TEXT. Hoy modo "medir, no bloquear" (expectedDigest()
+        // retorna nil). En release se pobla con el hash de la build y se compara.
         _ = NyxelBinaryIntegrity.verify()
 
         // Initialize Nyxel logging and system detection

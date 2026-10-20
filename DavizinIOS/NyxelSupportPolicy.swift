@@ -223,13 +223,10 @@ enum NyxelSupportPolicy {
         major >= 27
     }
 
-    /// La tabla de offsets opa334 funciona en todo iOS 17–26.x (verificado
-    /// hasta 26.6.x en los dispositivos de prueba de #252).  Solo iOS 27+
-    /// requiere la ruta de pairing/AirLift porque Apple parcheó el kexploit.
-    /// Si en algún sub-build específico de 26.x el kexploit falla, el error
-    /// se reporta como fallo de inyección — no se bloquea el app completo.
+    /// The bundled opa334 offset table is verified only through iOS 26.0.x.
+    /// Newer systems must use the supported pairing/AirLift route instead.
     static func supportsKernelOffsets(major: Int, minor: Int) -> Bool {
-        major >= 17 && major <= 26
+        major >= 17 && (major < 26 || (major == 26 && minor == 0))
     }
 
     static func isSupported(major: Int, minor: Int, patch: Int, build: String) -> Bool {
