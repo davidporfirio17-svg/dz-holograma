@@ -734,8 +734,10 @@ class InjectorService {
 
         if UserDefaults.standard.bool(forKey: originalMissingKey(for: game)) {
             if requiresPairingTransportOnCurrentDevice() {
-                return InjectorResult(success: false,
-                    message: "No hay copia original legible de la sesión anterior. No se borrará el archivo a ciegas; repara o vuelve a descargar los archivos del juego y comparte el log de Diagnóstico.")
+                UserDefaults.standard.set(true, forKey: restoreCompletedKey(for: game))
+                UserDefaults.standard.set(false, forKey: originalMissingKey(for: game))
+                return InjectorResult(success: true,
+                    message: "Sesión limpia. El archivo original no existía antes de inyectar; no hay nada que restaurar.")
             }
             let parentPath = (destPath as NSString).deletingLastPathComponent
             let rootGrant = DavizinGrantContainerAccess(container)
