@@ -1,0 +1,56 @@
+name: KV Diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Wrangler
+        run: npm i -g wrangler@3
+
+      - name: Dump KV state
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -e
+          echo "=============================="
+          echo "=== allowed_app_builds ==="
+          echo "=============================="
+          wrangler kv key get "allowed_app_builds" --binding DZH_KV --remote || echo "(not set)"
+          echo ""
+          echo "=============================="
+          echo "=== dzh_maintenance ==="
+          echo "=============================="
+          wrangler kv key get "dzh_maintenance" --binding DZH_KV --remote || echo "(not set)"
+          echo ""
+          echo "=============================="
+          echo "=== dzh_killswitch ==="
+          echo "=============================="
+          wrangler kv key get "dzh_killswitch" --binding DZH_KV --remote || echo "(not set)"
+          echo ""
+          echo "=============================="
+          echo "=== Keys (dzh_key: prefix) ==="
+          echo "=============================="
+          wrangler kv key list --binding DZH_KV --remote --prefix "dzh_key:" || echo "(none)"
+          echo ""
+          echo "=============================="
+          echo "=== Test key DZ-CWRV-LKSR ==="
+          echo "=============================="
+          wrangler kv key get "dzh_key:DZ-CWRV-LKSR" --binding DZH_KV --remote || echo "(not found)"
