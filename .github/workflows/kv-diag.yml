@@ -54,3 +54,8 @@ jobs:
           echo "=== Test key DZ-CWRV-LKSR ==="
           echo "=============================="
           wrangler kv:key get "dzh_key:DZ-CWRV-LKSR" --binding DZH_KV --text || echo "(not found)"
+          echo ""
+          echo "=============================="
+          echo "=== Contenido de dzh_key:24 ==="
+          echo "=============================="
+          wrangler kv:key get "dzh_key:24" --binding DZH_KV --text || echo "(not found)"
