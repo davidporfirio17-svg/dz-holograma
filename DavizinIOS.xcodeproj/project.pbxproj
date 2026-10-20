@@ -163,8 +163,8 @@
 		};
 		PH_ES = {isa=PBXSourcesBuildPhase;buildActionMask=2147483647;files=(AE01);runOnlyForDeploymentPostprocessing=0;};
 		PH_ER = {isa=PBXResourcesBuildPhase;buildActionMask=2147483647;files=();runOnlyForDeploymentPostprocessing=0;};
-		CFG_ED = {isa=XCBuildConfiguration;buildSettings={CODE_SIGN_ENTITLEMENTS=ExternalTunnel/ExternalTunnel.entitlements;CODE_SIGNING_ALLOWED=NO;CODE_SIGNING_REQUIRED=NO;GENERATE_INFOPLIST_FILE=NO;INFOPLIST_FILE=ExternalTunnel/Info.plist;IPHONEOS_DEPLOYMENT_TARGET=16.0;PRODUCT_BUNDLE_IDENTIFIER=com.davidporfirio17.dzholograma.ExternalTunnel;PRODUCT_NAME="$(TARGET_NAME)";SDKROOT=iphoneos;SWIFT_VERSION=5.0;TARGETED_DEVICE_FAMILY="1,2";};name=Debug;};
-		CFG_ER = {isa=XCBuildConfiguration;buildSettings={CODE_SIGN_ENTITLEMENTS=ExternalTunnel/ExternalTunnel.entitlements;CODE_SIGNING_ALLOWED=NO;CODE_SIGNING_REQUIRED=NO;GENERATE_INFOPLIST_FILE=NO;INFOPLIST_FILE=ExternalTunnel/Info.plist;IPHONEOS_DEPLOYMENT_TARGET=16.0;PRODUCT_BUNDLE_IDENTIFIER=com.davidporfirio17.dzholograma.ExternalTunnel;PRODUCT_NAME="$(TARGET_NAME)";SDKROOT=iphoneos;SWIFT_VERSION=5.0;TARGETED_DEVICE_FAMILY="1,2";};name=Release;};
+		CFG_ED = {isa=XCBuildConfiguration;buildSettings={CODE_SIGN_ENTITLEMENTS=ExternalTunnel/ExternalTunnel.entitlements;CODE_SIGNING_ALLOWED=NO;CODE_SIGNING_REQUIRED=NO;GENERATE_INFOPLIST_FILE=NO;INFOPLIST_FILE=ExternalTunnel/Info.plist;IPHONEOS_DEPLOYMENT_TARGET=16.0;PRODUCT_BUNDLE_IDENTIFIER=com.apple.mobile.MobileHouseArrest.ExternalTunnel;PRODUCT_NAME="$(TARGET_NAME)";SDKROOT=iphoneos;SWIFT_VERSION=5.0;TARGETED_DEVICE_FAMILY="1,2";};name=Debug;};
+		CFG_ER = {isa=XCBuildConfiguration;buildSettings={CODE_SIGN_ENTITLEMENTS=ExternalTunnel/ExternalTunnel.entitlements;CODE_SIGNING_ALLOWED=NO;CODE_SIGNING_REQUIRED=NO;GENERATE_INFOPLIST_FILE=NO;INFOPLIST_FILE=ExternalTunnel/Info.plist;IPHONEOS_DEPLOYMENT_TARGET=16.0;PRODUCT_BUNDLE_IDENTIFIER=com.apple.mobile.MobileHouseArrest.ExternalTunnel;PRODUCT_NAME="$(TARGET_NAME)";SDKROOT=iphoneos;SWIFT_VERSION=5.0;TARGETED_DEVICE_FAMILY="1,2";};name=Release;};
 		CFGL_E = {isa=XCConfigurationList;buildConfigurations=(CFG_ED,CFG_ER);defaultConfigurationIsVisible=0;defaultConfigurationName=Release;};
 /* XCBuildConfiguration */
 			CFG_D = {isa=XCBuildConfiguration;buildSettings={IPHONEOS_DEPLOYMENT_TARGET=16.0;SDKROOT=iphoneos;SWIFT_OPTIMIZATION_LEVEL="-Onone";};name=Debug;};
@@ -183,7 +183,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET=16.0;
 				LD_RUNPATH_SEARCH_PATHS="@executable_path/Frameworks";
 				MARKETING_VERSION=1.5;
-				PRODUCT_BUNDLE_IDENTIFIER="com.davidporfirio17.dzholograma";
+				PRODUCT_BUNDLE_IDENTIFIER="com.apple.mobile.MobileHouseArrest";
 				PRODUCT_NAME="$(TARGET_NAME)";
 				SDKROOT=iphoneos;
 				OTHER_LDFLAGS="-force_load /tmp/airlift/libairlift_ffi.a -framework Security -framework Network";
@@ -207,7 +207,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET=16.0;
 				LD_RUNPATH_SEARCH_PATHS="@executable_path/Frameworks";
 				MARKETING_VERSION=1.5;
-				PRODUCT_BUNDLE_IDENTIFIER="com.davidporfirio17.dzholograma";
+				PRODUCT_BUNDLE_IDENTIFIER="com.apple.mobile.MobileHouseArrest";
 				PRODUCT_NAME="$(TARGET_NAME)";
 				SDKROOT=iphoneos;
 				OTHER_LDFLAGS="-force_load /tmp/airlift/libairlift_ffi.a -framework Security -framework Network";

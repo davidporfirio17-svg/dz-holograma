@@ -286,8 +286,8 @@ static NSMutableDictionary<NSString *, MCMRetainedLease *> *MCMActiveLeases(void
 }
 
 NSString *MCMActivateContainerPath(uint64_t cls, NSString *identifier, BOOL group, NSString **error) {
-    if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.davidporfirio17.dzholograma"]) {
-        if (error) *error = @"host bundle identifier is not com.davidporfirio17.dzholograma";
+    if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.mobile.MobileHouseArrest"]) {
+        if (error) *error = @"host bundle identifier is not com.apple.mobile.MobileHouseArrest";
         return nil;
     }
     if (!MCMSafeIdentifier(identifier)) {
