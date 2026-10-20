@@ -464,13 +464,19 @@ class InjectorService {
         sendErrorNotification("🔍 PASO 3", "Activando container MCM...")
 
         var mcmErr: String?
-        guard let container = Self.getContainerPathWithTimeout(bundleID: bundleID, timeout: 25, error: &mcmErr) else {
+        let container: String
+        if let mcmContainer = Self.getContainerPathWithTimeout(bundleID: bundleID, timeout: 25, error: &mcmErr) {
+            container = mcmContainer
+            sendErrorNotification("✅ PASO 3", "Contenedor del juego resuelto")
+        } else if requiresPairingTransportOnCurrentDevice() && NixelAirLiftFileChannel.isAvailable {
+            container = "/private/var/containers/Bundle/Application/AIRLIFT-TRANSPORT"
+            NyxelActivityLog.record("MCM no encontró container en iOS 27 — AirLift disponible, se continuará sin container path real")
+            sendErrorNotification("⚠️ PASO 3", "MCM no encontró container — AirLift manejará lectura/escritura")
+        } else {
             let msg = mcmErr ?? "MCM falló - container nil"
             sendErrorNotification("❌ PASO 3", msg)
             return InjectorResult(success: false, message: msg)
         }
-
-        sendErrorNotification("✅ PASO 3", "Contenedor del juego resuelto")
 
         sendErrorNotification("⏭️ PASO 4", "Se omite query MCM heredada: esta función está deshabilitada en la build")
 
@@ -656,7 +662,13 @@ class InjectorService {
         let bundleID = bundleID(for: game)
 
         var mcmErr: NSString?
-        guard let container = DavizinGetContainerPath(bundleID, &mcmErr) else {
+        let container: String
+        if let mcmContainer = DavizinGetContainerPath(bundleID, &mcmErr) {
+            container = mcmContainer
+        } else if requiresPairingTransportOnCurrentDevice() && NixelAirLiftFileChannel.isAvailable {
+            container = "/private/var/containers/Bundle/Application/AIRLIFT-TRANSPORT"
+            NyxelActivityLog.record("uninject: MCM no encontró container en iOS 27 — AirLift disponible")
+        } else {
             return InjectorResult(success: false,
                 message: (mcmErr as String?) ?? "Container no encontrado")
         }
