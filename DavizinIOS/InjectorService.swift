@@ -533,12 +533,8 @@ class InjectorService {
         } else if let legacyBackup = readFromContainer(relPath: backupRel, container: container, bundleID: bundleID), !legacyBackup.isEmpty {
             originalData = legacyBackup
             NyxelActivityLog.record("Respaldo remoto anterior encontrado; se migrará al almacenamiento privado")
-        } else if previousPath != nil && !previousRestoreWasConfirmed {
+        } else if previousPath != nil && !previousRestoreWasConfirmed && !UserDefaults.standard.bool(forKey: originalMissingKey(for: game)) {
             let msg = "Hay una sesión anterior sin restauración confirmada y no se encontró su respaldo. No se volverá a inyectar para evitar perder el original."
-            sendErrorNotification("❌ PASO 9", msg)
-            return InjectorResult(success: false, message: msg)
-        } else if previousPath != nil && UserDefaults.standard.bool(forKey: originalMissingKey(for: game)) {
-            let msg = "El build anterior marcó el original como ausente y no dejó un respaldo legible. Repara o vuelve a descargar los archivos del juego antes de inyectar."
             sendErrorNotification("❌ PASO 9", msg)
             return InjectorResult(success: false, message: msg)
         } else {
@@ -592,6 +588,10 @@ class InjectorService {
 
         sendErrorNotification("🔍 PASO 11", "INYECTANDO ARCHIVO...")
         if let error = writeToContainer(finalData, relPath: activeRel, container: container, bundleID: bundleID) {
+            if originalWasMissing {
+                UserDefaults.standard.set(true, forKey: restoreCompletedKey(for: game))
+                NyxelActivityLog.record("Escritura falló pero el original no existía — estado limpiado para permitir reintento")
+            }
             let msg = "Inyección falló: \(error.localizedDescription)"
             sendErrorNotification("❌ PASO 11", msg)
             return InjectorResult(success: false, message: msg)
