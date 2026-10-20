@@ -43,13 +43,12 @@ final class GameSelectionView: UIView {
     }
 
     private func refreshCompatibilityIndicators() {
-        let systemOK = NyxelSupportPolicy.isCurrentSystemSupported
-        let freeFireOK = systemOK && InjectorService.isBundleAvailable(for: .freeFire)
-        let freeFireMaxOK = systemOK && InjectorService.isBundleAvailable(for: .freeFireMax)
-        freeFireCompatibility.text = freeFireOK ? "● Bundle compatible" : "● Bundle no compatible"
-        freeFireMaxCompatibility.text = freeFireMaxOK ? "● Bundle compatible" : "● Bundle no compatible"
-        freeFireCompatibility.textColor = freeFireOK ? AppTheme.success : AppTheme.failure
-        freeFireMaxCompatibility.textColor = freeFireMaxOK ? AppTheme.success : AppTheme.failure
+        let freeFireInstalled = NyxelInstalledGames.isInstalled(for: .freeFire)
+        let freeFireMaxInstalled = NyxelInstalledGames.isInstalled(for: .freeFireMax)
+        freeFireCompatibility.text = freeFireInstalled ? "● Juego instalado" : "● Juego no detectado"
+        freeFireMaxCompatibility.text = freeFireMaxInstalled ? "● Juego instalado" : "● Juego no detectado"
+        freeFireCompatibility.textColor = freeFireInstalled ? AppTheme.success : AppTheme.failure
+        freeFireMaxCompatibility.textColor = freeFireMaxInstalled ? AppTheme.success : AppTheme.failure
     }
 
     private func configure() {
