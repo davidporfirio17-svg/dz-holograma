@@ -573,11 +573,8 @@ class InjectorService {
             originalWasMissing = false
             NyxelActivityLog.record("Original respaldado en el almacenamiento privado (\(original.count) bytes)")
         } else if requiresPairingTransportOnCurrentDevice() {
-            let detail = originalReadFailure.map { String($0.prefix(480)) }
-            let reason = detail.map { " Detalle: \($0)" } ?? " Revisa Perfil > Diagnóstico para ver el registro AirLift."
-            let msg = "AirLift no pudo leer el original. Se canceló la inyección para no reemplazarlo sin respaldo.\(reason)"
-            sendErrorNotification("❌ PASO 9", msg)
-            return InjectorResult(success: false, message: msg)
+            NyxelActivityLog.record("iOS 27: original no leído — se continuará sin respaldo")
+            originalWasMissing = true
         } else if !fm.fileExists(atPath: destPath) {
             originalWasMissing = true
         } else {
