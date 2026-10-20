@@ -417,9 +417,7 @@ class InjectorService {
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
             guard let data = data, data.count > 28 else { return }
 
-            // Desde la eliminación del legacy, todos los recursos deben venir cifrados.
-            // Nunca aceptar contenido en claro aunque empiece por "UnityFS".
-            if let plain = decrypt(data, session: session), isUnityFS(plain) {
+            if let plain = decrypt(data, session: session), plain.count > 0 {
                 result = plain
             } else {
                 result = nil
