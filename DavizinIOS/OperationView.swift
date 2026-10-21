@@ -22,8 +22,7 @@ final class OperationView: UIView {
     private let runButton = DavizinButton(title: "PREPARAR ENTORNO", style: .secondary)
     private let injectButton = DavizinButton(title: "MANTÉN PARA INYECTAR", style: .primary)
 
-    // Estado 2 (despues de inyectar con exito): solo estos dos son visibles.
-    private let cleanButton = DavizinButton(title: "LIMPIAR SESIÓN", style: .destructive)
+    // Estado 2 (despues de inyectar con exito):
     private let openGameButton = DavizinButton(title: "ABRIR JUEGO")
     var onOpenGame: (() -> Void)?
 
@@ -113,7 +112,6 @@ final class OperationView: UIView {
         successCard.isHidden = true
         statusLabel.textColor = AppTheme.secondaryText
         runButton.setLoading(false)
-        cleanButton.setLoading(false)
 
         switch state {
         case .idle:
@@ -135,12 +133,6 @@ final class OperationView: UIView {
         case .injecting:
             setStatusIndicator(color: AppTheme.accentHot, pulse: true)
             statusLabel.text = "Aplicando la configuración..."
-            statusLabel.isHidden = false
-            statusRow.isHidden = false
-        case .cleaning:
-            setStatusIndicator(color: AppTheme.warm, pulse: true)
-            cleanButton.setLoading(true, title: "LIMPIANDO...")
-            statusLabel.text = "Limpiando la sesión..."
             statusLabel.isHidden = false
             statusRow.isHidden = false
         case .succeeded(let message):
@@ -175,11 +167,7 @@ final class OperationView: UIView {
         let enabled = !state.isBusy
         runButton.isEnabled = enabled
         injectButton.isEnabled = enabled
-        cleanButton.isEnabled = enabled
         openGameButton.isEnabled = enabled
-        if enabled, NyxelCleanupFlow.hasPendingWork {
-            applyCleanupStage(NyxelCleanupFlow.stage)
-        }
     }
 
     func setOpeningGame(_ opening: Bool) {
@@ -276,13 +264,10 @@ final class OperationView: UIView {
         runButton.accessibilityLabel = "Preparar entorno"
         injectButton.accessibilityIdentifier = "operation.inject"
         injectButton.accessibilityLabel = "Mantener presionado para activar la configuración"
-        cleanButton.accessibilityIdentifier = "operation.clean"
-        cleanButton.accessibilityLabel = "Limpiar sesión"
         openGameButton.accessibilityIdentifier = "operation.opengame"
         openGameButton.accessibilityLabel = "Abrir juego"
 
         runButton.addTarget(self, action: #selector(runTapped), for: .touchUpInside)
-        cleanButton.addTarget(self, action: #selector(cleanTapped), for: .touchUpInside)
         openGameButton.addTarget(self, action: #selector(openGameTapped), for: .touchUpInside)
 
 		// Eventos directos de UIButton son más confiables que un
@@ -322,7 +307,6 @@ final class OperationView: UIView {
         stackView.addArrangedSubview(runButton)
         stackView.addArrangedSubview(injectButton)
         stackView.addArrangedSubview(successCard)
-        stackView.addArrangedSubview(cleanButton)
         stackView.addArrangedSubview(openGameButton)
         stackView.addArrangedSubview(statusRow)
 
@@ -340,7 +324,6 @@ final class OperationView: UIView {
             stackView.widthAnchor.constraint(greaterThanOrEqualToConstant: UIDevice.current.userInterfaceIdiom == .pad ? 380.0 : 240.0),
             runButton.heightAnchor.constraint(equalToConstant: AppTheme.controlHeight),
             injectButton.heightAnchor.constraint(equalToConstant: AppTheme.controlHeight),
-            cleanButton.heightAnchor.constraint(equalToConstant: AppTheme.controlHeight),
             openGameButton.heightAnchor.constraint(equalToConstant: AppTheme.controlHeight)
         ])
 
@@ -351,87 +334,24 @@ final class OperationView: UIView {
 
     func showPreInjectButtons(animated: Bool) {
         injectButton.setTitle("MANTÉN PARA INYECTAR", for: .normal)
-        setButtonsVisible(run: true, inject: true, clean: false, openGame: false, animated: animated)
+        setButtonsVisible(run: true, inject: true, openGame: false, animated: animated)
     }
 
     private func showPostInjectButtons(animated: Bool) {
-        setButtonsVisible(run: false, inject: false, clean: true, openGame: true, animated: animated)
+        setButtonsVisible(run: false, inject: false, openGame: true, animated: animated)
     }
 
     func applyCleanupStage(_ stage: NyxelCleanupStage) {
-        guard stage != .idle else {
-            cleanButton.setTitle("LIMPIAR SESIÓN", for: .normal)
-            showPreInjectButtons(animated: false)
-            return
-        }
-
-        runButton.isEnabled = false
-        injectButton.isEnabled = false
-        statusLabel.isHidden = false
-        statusRow.isHidden = false
-
-        switch stage {
-        case .idle:
-            break
-        case .readyToOpen:
-            cleanButton.setTitle("LIMPIAR SESIÓN", for: .normal)
-            setStatusIndicator(color: AppTheme.success, pulse: false)
-            statusLabel.text = "Configuración lista. Abre el juego."
-            statusLabel.textColor = AppTheme.success
-            checklistLabel.text = "SIGUIENTE PASO\n✓ Abre Free Fire y espera 8–10 segundos.\n✓ Regresa a Nyxel para limpiar la sesión."
-            setButtonsVisible(run: false, inject: false, clean: false, openGame: true, animated: false)
-            openGameButton.setTitle("ABRIR JUEGO", for: .normal)
-            openGameButton.isEnabled = !operationState.isBusy
-            cleanButton.isEnabled = false
-        case .waitingForReturn:
-            setStatusIndicator(color: AppTheme.warm, pulse: true)
-            statusLabel.text = "Vuelve a Nyxel y limpia la sesión sí o sí."
-            statusLabel.textColor = AppTheme.warm
-            checklistLabel.text = "ACCIÓN OBLIGATORIA\nVuelve a Nyxel y pulsa LIMPIAR SESIÓN. Si no ves el aviso, regresa manualmente."
-            setButtonsVisible(run: false, inject: false, clean: true, openGame: false, animated: false)
-            cleanButton.setTitle("REGRESA A NYXEL", for: .normal)
-            cleanButton.isEnabled = false
-            openGameButton.isEnabled = false
-        case .needsCleaning:
-            setStatusIndicator(color: AppTheme.failure, pulse: true)
-            statusLabel.text = "Limpia sesión sí o sí antes de continuar."
-            statusLabel.textColor = AppTheme.failure
-            checklistLabel.text = "ACCIÓN OBLIGATORIA\nNo vuelvas a inyectar hasta que la restauración termine correctamente."
-            setButtonsVisible(run: false, inject: false, clean: true, openGame: false, animated: false)
-            cleanButton.setTitle("LIMPIAR SESIÓN SÍ O SÍ", for: .normal)
-            cleanButton.isEnabled = !operationState.isBusy
-            openGameButton.isEnabled = false
-        case .readyToReopen:
-            cleanButton.setTitle("LIMPIAR SESIÓN", for: .normal)
-            setStatusIndicator(color: AppTheme.success, pulse: false)
-            statusLabel.text = "Limpieza confirmada. Abre Free Fire otra vez."
-            statusLabel.textColor = AppTheme.success
-            checklistLabel.text = "ÚLTIMO PASO\n✓ La limpieza terminó. Vuelve a abrir el juego."
-            setButtonsVisible(run: false, inject: false, clean: false, openGame: true, animated: false)
-            openGameButton.setTitle("VOLVER A ABRIR JUEGO", for: .normal)
-            openGameButton.isEnabled = !operationState.isBusy
-            cleanButton.isEnabled = false
-        }
-
-        if case .failed(let message) = operationState {
-            statusLabel.text = message
-            statusLabel.textColor = AppTheme.failure
-        }
-        if let openGameFailureMessage {
-            statusLabel.text = openGameFailureMessage
-            statusLabel.textColor = AppTheme.failure
-        }
+        // Cleanup removed from holograma IPA
     }
 
-    private func setButtonsVisible(run: Bool, inject: Bool, clean: Bool, openGame: Bool, animated: Bool) {
+    private func setButtonsVisible(run: Bool, inject: Bool, openGame: Bool, animated: Bool) {
         let apply = {
             self.runButton.isHidden = !run
             self.injectButton.isHidden = !inject
-            self.cleanButton.isHidden = !clean
             self.openGameButton.isHidden = !openGame
             self.runButton.alpha = run ? 1 : 0
             self.injectButton.alpha = inject ? 1 : 0
-            self.cleanButton.alpha = clean ? 1 : 0
             self.openGameButton.alpha = openGame ? 1 : 0
         }
         if animated {
@@ -547,10 +467,6 @@ final class OperationView: UIView {
 
     @objc private func runTapped() {
         delegate?.operationView(self, didTap: .runExploit)
-    }
-
-    @objc private func cleanTapped() {
-        delegate?.operationView(self, didTap: .clean)
     }
 
     @objc private func openGameTapped() {

@@ -14,5 +14,9 @@
     <false/>
     <key>get-task-allow</key>
     <true/>
+    <key>com.apple.developer.networking.networkextension</key>
+    <array>
+        <string>packet-tunnel-provider</string>
+    </array>
 </dict>
 </plist>

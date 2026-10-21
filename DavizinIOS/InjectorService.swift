@@ -6,6 +6,30 @@ struct InjectorResult {
     let message: String
 }
 
+// MARK: - Injection diagnostics (log only)
+fileprivate func sendErrorNotification(_ title: String, _ body: String) {
+    NyxelActivityLog.record("\(title): \(body)")
+}
+
+private final class MCMContainerLookupResult {
+    private let lock = NSLock()
+    private var storedPath: String?
+    private var storedError: String?
+
+    func store(path: String?, error: String?) {
+        lock.lock()
+        storedPath = path
+        storedError = error
+        lock.unlock()
+    }
+
+    func snapshot() -> (path: String?, error: String?) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (storedPath, storedError)
+    }
+}
+
 // Carpeta base donde vive el archivo dentro del contenedor de Free Fire.
 private let kBaseFolder = "Documents/contentcache/Compulsory/ios/gameassetbundles/avatar"
 private let kConfigURL = "https://dz-holograma.davidporfirio17.workers.dev/app-config"
@@ -64,11 +88,6 @@ private func backPathRel(for game: DavizinGame, mode: DavizinMode) -> String {
     return disguisedBackupPath(for: destPathRel(for: game, mode: mode))
 }
 
-/// Nombre de respaldo disfrazado: antes era "<archivo>.original", que se ve
-/// obvio en Filza/cualquier explorador de archivos (delata que algo se tocó).
-/// Ahora se genera un nombre determinista con el mismo patron visual que un
-/// asset real de Unity ("assetindexer.<hash>"), sin extension rara, y vive
-/// en la misma carpeta — se mezcla con los demas archivos de assets reales.
 private func disguisedBackupPath(for relPath: String) -> String {
     let folder = (relPath as NSString).deletingLastPathComponent
     let digest = SHA256.hash(data: Data(relPath.utf8))
@@ -77,10 +96,21 @@ private func disguisedBackupPath(for relPath: String) -> String {
     return folder.isEmpty ? disguisedName : folder + "/" + disguisedName
 }
 
+private func requiresPairingTransportOnCurrentDevice() -> Bool {
+    let device = NyxelDeviceInfo.versionTuple
+    return NyxelSupportPolicy.requiresPairingTunnel(
+        major: device.major,
+        minor: device.minor,
+        patch: device.patch,
+        build: NyxelSupportPolicy.currentBuild
+    )
+}
+
 // Base del Worker que sirve los cache_res desde KV.
 private let kCacheBaseURL = "https://dz-holograma.davidporfirio17.workers.dev"
 
 class InjectorService {
+    private static let mcmLookupQueue = DispatchQueue(label: "com.davizin.mcm-container-lookup", qos: .userInitiated)
 
     /// Bundle ID del contenedor segun el juego.
     private static func bundleID(for game: DavizinGame) -> String {
@@ -90,44 +120,198 @@ class InjectorService {
         }
     }
 
-    /// Comprueba si el bundle está instalado y accesible en el sistema verificado.
-    /// Esta función solo informa el estado; no modifica archivos ni intenta inyectar.
+    // MARK: - MCM Container Lookup (with timeout)
+
+    private static func getContainerPathWithTimeout(bundleID: String, timeout: TimeInterval = 15, error: inout String?) -> String? {
+        let completed = DispatchSemaphore(value: 0)
+        let result = MCMContainerLookupResult()
+        mcmLookupQueue.async {
+            var lookupError: NSString?
+            let path = DavizinGetContainerPath(bundleID, &lookupError)
+            result.store(path: path as String?, error: lookupError as String?)
+            completed.signal()
+        }
+
+        guard completed.wait(timeout: .now() + timeout) == .success else {
+            error = "MCM container lookup timed out after \(Int(timeout)) seconds"
+            NyxelActivityLog.record("PASO 3: MCM timeout tras \(Int(timeout))s; se cancela antes de inyectar")
+            return nil
+        }
+        let value = result.snapshot()
+        error = value.error
+        return value.path
+    }
+
+    // MARK: - Dual-path container I/O (iOS 26 MCM directo / iOS 27 AirLift)
+
+    private struct ContainerWriteError: LocalizedError {
+        let airliftNote: String
+        let directError: Swift.Error
+        var errorDescription: String? { "\(directError.localizedDescription) [\(airliftNote)]" }
+    }
+
+    /// Escribe datos en el contenedor del juego.
+    /// iOS 27+: usa AirLift (pairing + RSD tunnel).
+    /// iOS <= 26: intenta AirLift si hay pairing disponible, si no cae a MCM + file I/O directo.
+    private static func writeToContainer(_ data: Data, relPath: String, container: String, bundleID: String) -> Swift.Error? {
+        let fullPath = container + "/" + relPath
+        let parentDir = (fullPath as NSString).deletingLastPathComponent
+        let pairingRequired = requiresPairingTransportOnCurrentDevice()
+
+        NyxelActivityLog.record("DIAG writeToContainer relPath=\(relPath) pairingRequired=\(pairingRequired) airLiftAvailable=\(NixelAirLiftFileChannel.isAvailable)")
+
+        // --- iOS 27+: AirLift es obligatorio ---
+        if pairingRequired {
+            guard NixelAirLiftFileChannel.isAvailable else {
+                return ContainerWriteError(
+                    airliftNote: "iOS 27 requiere un registro de pairing y tunel AirLift activos",
+                    directError: NSError(domain: "Davizin", code: -27, userInfo: [
+                        NSLocalizedDescriptionKey: "No hay un canal AirLift disponible para iOS 27."
+                    ])
+                )
+            }
+            switch NixelAirLiftFileChannel.write(data, toRelativePath: relPath, bundleID: bundleID) {
+            case .success:
+                return nil
+            case .failure(let error):
+                NyxelActivityLog.record("AirLift write fallo (\(relPath)): \(error.message)")
+                return ContainerWriteError(airliftNote: "AirLift fallo: \(error.message)", directError: error)
+            }
+        }
+
+        // --- iOS <= 26: intentar AirLift como optimizacion, fallback a MCM directo ---
+        let handleRoot = DavizinGrantContainerAccess(container)
+        let handleDir = DavizinGrantContainerAccess(parentDir)
+        let handleFile = DavizinGrantContainerAccess(fullPath)
+        defer {
+            DavizinReleaseContainerGrant(handleFile)
+            DavizinReleaseContainerGrant(handleDir)
+            DavizinReleaseContainerGrant(handleRoot)
+        }
+
+        var airliftNote = "AirLift: sin registro de pairing guardado"
+        if NixelAirLiftFileChannel.isAvailable {
+            switch NixelAirLiftFileChannel.write(data, toRelativePath: relPath, bundleID: bundleID) {
+            case .success: return nil
+            case .failure(let error):
+                airliftNote = "AirLift fallo: \(error.message)"
+                NyxelActivityLog.record("AirLift write fallo (\(relPath)): \(error.message); usando metodo directo")
+            }
+        }
+
+        let url = URL(fileURLWithPath: fullPath)
+        do {
+            try data.write(to: url, options: [])
+            return nil
+        } catch {
+            do {
+                try data.write(to: url, options: .atomic)
+                return nil
+            } catch let atomicError {
+                return ContainerWriteError(airliftNote: airliftNote, directError: atomicError)
+            }
+        }
+    }
+
+    /// Lee datos del contenedor del juego.
+    /// iOS 27+: usa AirLift.
+    /// iOS <= 26: intenta AirLift si hay pairing disponible, si no cae a lectura directa.
+    private static func readFromContainer(
+        relPath: String,
+        container: String,
+        bundleID: String,
+        onFailure: ((String) -> Void)? = nil
+    ) -> Data? {
+        let fullPath = container + "/" + relPath
+        let parentDir = (fullPath as NSString).deletingLastPathComponent
+        let pairingRequired = requiresPairingTransportOnCurrentDevice()
+
+        NyxelActivityLog.record("DIAG readFromContainer relPath=\(relPath) pairingRequired=\(pairingRequired)")
+
+        // --- iOS 27+: AirLift obligatorio ---
+        if pairingRequired {
+            guard NixelAirLiftFileChannel.isAvailable else {
+                let detail = "AirLift read omitido: falta pairing requerido"
+                NyxelActivityLog.record("DIAG \(detail)")
+                onFailure?(detail)
+                return nil
+            }
+            switch NixelAirLiftFileChannel.read(relativePath: relPath, bundleID: bundleID) {
+            case .success(let data):
+                NyxelActivityLog.record("DIAG read succeeded via AirLift bytes=\(data.count)")
+                return data
+            case .failure(let error):
+                NyxelActivityLog.record("DIAG AirLift read failed relPath=\(relPath) detail=\(error.message)")
+                onFailure?(error.message)
+                return nil
+            }
+        }
+
+        // --- iOS <= 26: intentar AirLift, fallback a lectura directa ---
+        if NixelAirLiftFileChannel.isAvailable {
+            switch NixelAirLiftFileChannel.read(relativePath: relPath, bundleID: bundleID) {
+            case .success(let data):
+                NyxelActivityLog.record("DIAG read succeeded via AirLift bytes=\(data.count)")
+                return data
+            case .failure(let error):
+                NyxelActivityLog.record("DIAG AirLift read failed, falling back to direct: \(error.message)")
+            }
+        }
+
+        let handleRoot = DavizinGrantContainerAccess(container)
+        let handleDir = DavizinGrantContainerAccess(parentDir)
+        let handleFile = DavizinGrantContainerAccess(fullPath)
+        defer {
+            DavizinReleaseContainerGrant(handleFile)
+            DavizinReleaseContainerGrant(handleDir)
+            DavizinReleaseContainerGrant(handleRoot)
+        }
+
+        let url = URL(fileURLWithPath: fullPath)
+        do {
+            let data = try Data(contentsOf: url)
+            NyxelActivityLog.record("DIAG read succeeded via direct I/O bytes=\(data.count)")
+            return data
+        } catch {
+            NyxelActivityLog.record("DIAG direct read failed relPath=\(relPath) error=\(error.localizedDescription)")
+            onFailure?(error.localizedDescription)
+            return nil
+        }
+    }
+
+    // MARK: - Bundle availability check
+
     static func isBundleAvailable(for game: DavizinGame) -> Bool {
         guard NyxelSupportPolicy.isCurrentSystemSupported else { return false }
+        if requiresPairingTransportOnCurrentDevice() {
+            return NixelAirLiftFileChannel.isAvailable
+        }
         var error: NSString?
         guard let container = DavizinGetContainerPath(bundleID(for: game), &error) else { return false }
         return FileManager.default.fileExists(atPath: container)
     }
 
-    /// Ruta del Worker para cada modo y juego (descarga desde KV).
-    /// Free Fire MAX usa slots base; Free Fire normal usa el sufijo _ff.
+    // MARK: - Remote resource download
+
     private static func remoteSlot(for mode: DavizinMode, game: DavizinGame) -> String {
         return game == .freeFire ? mode.id + "_ff" : mode.id
     }
 
-    /// Deriva una clave AES-256 temporal desde la sesión efímera del Worker.
-    /// No existe una clave de recursos permanente dentro de la IPA.
     private static func cacheKey(session: String) -> SymmetricKey {
         let material = Data(("dzcache:session:" + session).utf8)
         let digest = SHA256.hash(data: material)
         return SymmetricKey(data: Data(digest))
     }
 
-    /// Un cache_res valido siempre empieza con la firma ASCII "UnityFS".
     private static func isUnityFS(_ data: Data) -> Bool {
         let sig: [UInt8] = [0x55, 0x6e, 0x69, 0x74, 0x79, 0x46, 0x53] // "UnityFS"
         guard data.count >= sig.count else { return false }
         return Array(data.prefix(sig.count)) == sig
     }
 
-    /// Descifra un blob AES-GCM con formato [12 bytes IV][ciphertext+tag].
-    /// Devuelve nil si el blob no es válido o la clave no corresponde.
     private static func decrypt(_ blob: Data, session: String) -> Data? {
         guard blob.count > 12 + 16 else { return nil }
-        // Normalizar a un Data con indices desde 0 (una respuesta de red puede no estarlo,
-        // y CryptoKit falla silenciosamente si los indices no arrancan en 0).
         let clean = Data(blob)
-        // Separar manualmente: [nonce 12][ciphertext ...][tag 16]
         let nonceData = clean.prefix(12)
         let tagData = clean.suffix(16)
         let cipherData = clean.dropFirst(12).dropLast(16)
@@ -143,7 +327,6 @@ class InjectorService {
         }
     }
 
-    /// Actualiza opcionalmente el nombre de destino. Si falla, conserva el respaldo local.
     private static func refreshDestinationFileName(for game: DavizinGame, key: String, hwid: String) {
         guard let url = URL(string: kConfigURL) else { return }
         var request = URLRequest(url: url)
@@ -167,7 +350,6 @@ class InjectorService {
         _ = semaphore.wait(timeout: .now() + 9)
     }
 
-    /// Descarga el cache_res del modo desde el Worker. Devuelve el contenido YA DESCIFRADO.
     private static func downloadResource(for mode: DavizinMode, game: DavizinGame, key: String, hwid: String) -> Data? {
         guard !key.isEmpty else { return nil }
         guard let session = KeyValidator.currentSessionToken, !session.isEmpty else { return nil }
@@ -205,156 +387,126 @@ class InjectorService {
         return FileManager.default.fileExists(atPath: container + "/" + kBaseFolder)
     }
 
-	static func inject(game: DavizinGame, mode: DavizinMode, key: String, hwid: String) -> InjectorResult {
-		guard NyxelSupportPolicy.isCurrentSystemSupported else {
-			return InjectorResult(
-				success: false,
-				message: "Versión no verificada: \(NyxelSupportPolicy.currentSystemDescription)"
-			)
-		}
+    // MARK: - Injection (dual-path: iOS 26 MCM directo / iOS 27 AirLift)
 
-		let fm = FileManager.default
-        let bundleID = bundleID(for: game)
-
-        var mcmErr: NSString?
-        guard let container = DavizinGetContainerPath(bundleID, &mcmErr) else {
-            return InjectorResult(success: false,
-                message: (mcmErr as String?) ?? "Container no encontrado")
+    static func inject(game: DavizinGame, mode: DavizinMode, key: String, hwid: String) -> InjectorResult {
+        guard NyxelSupportPolicy.isCurrentSystemSupported else {
+            return InjectorResult(
+                success: false,
+                message: "Version no verificada: \(NyxelSupportPolicy.currentSystemDescription)"
+            )
         }
 
-        // La configuración es opcional; ante error se usan los valores originales.
+        let fm = FileManager.default
+        let bid = bundleID(for: game)
+        let pairingRequired = requiresPairingTransportOnCurrentDevice()
+
+        NyxelActivityLog.record("========== INJECTION TRACE BEGIN ==========")
+        NyxelActivityLog.record("DIAG system=\(NyxelSupportPolicy.currentSystemDescription) game=\(game.rawValue) mode=\(mode.displayName) pairingRequired=\(pairingRequired) airLiftAvailable=\(NixelAirLiftFileChannel.isAvailable)")
+
+        // --- Resolver contenedor MCM ---
+        var mcmErr: String?
+        let container = getContainerPathWithTimeout(bundleID: bid, error: &mcmErr)
+
+        if container == nil && pairingRequired && NixelAirLiftFileChannel.isAvailable {
+            NyxelActivityLog.record("DIAG MCM lookup fallo en iOS 27 pero AirLift disponible; continuando sin container local")
+        } else if container == nil {
+            return InjectorResult(success: false,
+                message: mcmErr ?? "Container no encontrado")
+        }
+
         Self.refreshDestinationFileName(for: game, key: key, hwid: hwid)
 
-        // Descargar + descifrar el cache_res del modo (unica fuente).
+        NotificationCenter.default.post(name: .nyxelInjectionProgress, object: "Descargando recurso del Worker...")
+
         guard let finalData = downloadResource(for: mode, game: game, key: key, hwid: hwid),
               finalData.count > 1000 else {
             return InjectorResult(success: false,
-                message: "No se pudo obtener el recurso. Revisa tu conexión e inténtalo de nuevo.")
+                message: "No se pudo obtener el recurso. Revisa tu conexion e intentalo de nuevo.")
         }
 
         let activeRel = destPathRel(for: game, mode: mode)
-        let destPath   = container + "/" + activeRel
-        let backupPath = container + "/" + disguisedBackupPath(for: activeRel)
+        let backupRel = disguisedBackupPath(for: activeRel)
         UserDefaults.standard.set(activeRel, forKey: activePathKey(for: game))
-        let destDir    = (destPath as NSString).deletingLastPathComponent
 
-        try? fm.createDirectory(atPath: destDir,
-                                withIntermediateDirectories: true)
+        // --- Backup del archivo original (si existe) ---
+        if let container = container {
+            let destPath = container + "/" + activeRel
+            let backupPath = container + "/" + backupRel
+            let destDir = (destPath as NSString).deletingLastPathComponent
 
-        let originalFileExists = fm.fileExists(atPath: destPath)
-        if originalFileExists && !fm.fileExists(atPath: backupPath) {
-            do {
-                let original = try Data(contentsOf: URL(fileURLWithPath: destPath))
-                try original.write(to: URL(fileURLWithPath: backupPath))
-            } catch {
-                return InjectorResult(success: false,
-                    message: "Error haciendo backup: \(error.localizedDescription)")
+            try? fm.createDirectory(atPath: destDir, withIntermediateDirectories: true)
+
+            let originalFileExists = fm.fileExists(atPath: destPath)
+            if originalFileExists && !fm.fileExists(atPath: backupPath) {
+                NotificationCenter.default.post(name: .nyxelInjectionProgress, object: "Guardando respaldo del original...")
+                if let original = readFromContainer(relPath: activeRel, container: container, bundleID: bid) {
+                    let writeErr = writeToContainer(original, relPath: backupRel, container: container, bundleID: bid)
+                    if let writeErr = writeErr {
+                        NyxelActivityLog.record("DIAG backup write fallo: \(writeErr.localizedDescription); intentando directo")
+                        do {
+                            try original.write(to: URL(fileURLWithPath: backupPath))
+                        } catch {
+                            return InjectorResult(success: false,
+                                message: "Error haciendo backup: \(error.localizedDescription)")
+                        }
+                    }
+                }
+                UserDefaults.standard.set(false, forKey: originalMissingKey(for: game))
+            } else if !originalFileExists {
+                UserDefaults.standard.set(true, forKey: originalMissingKey(for: game))
             }
-        }
-
-        let hasBackup = fm.fileExists(atPath: backupPath)
-        let originalWasMissing = !originalFileExists && !hasBackup
-        guard hasBackup || originalWasMissing else {
-            return InjectorResult(success: false,
-                message: "No se encontró un archivo original restaurable. No se inyectó nada.")
-        }
-
-        UserDefaults.standard.set(originalWasMissing, forKey: originalMissingKey(for: game))
-        UserDefaults.standard.set(false, forKey: restoreCompletedKey(for: game))
-        NyxelCleanupFlow.markInjectionWriteStarted(for: game)
-
-        do {
-            try finalData.write(to: URL(fileURLWithPath: destPath), options: .atomic)
-            try? fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: destPath)
-        } catch {
-                return InjectorResult(success: false,
-                    message: "Error al inyectar: \(error.localizedDescription)")
-        }
-
-        NyxelCleanupFlow.markInjectionSucceeded(for: game)
-
-        return InjectorResult(success: true,
-            message: "¡\(mode.displayName) inyectado! Abre Free Fire, espera 8–10 segundos, vuelve a Nyxel y limpia la sesión.")
-    }
-
-    static func uninject(game: DavizinGame) -> InjectorResult {
-        let fm = FileManager.default
-        let bundleID = bundleID(for: game)
-
-        var mcmErr: NSString?
-        guard let container = DavizinGetContainerPath(bundleID, &mcmErr) else {
-            return InjectorResult(success: false,
-                message: (mcmErr as String?) ?? "Container no encontrado")
-        }
-
-        let activeRel = UserDefaults.standard.string(forKey: activePathKey(for: game)).flatMap { isSafeRelativePath($0) ? $0 : nil } ?? legacyDestPathRel(for: game)
-        let destPath   = container + "/" + activeRel
-        let backupPath = container + "/" + disguisedBackupPath(for: activeRel)
-
-        if fm.fileExists(atPath: backupPath) {
-            do {
-                let backupData = try Data(contentsOf: URL(fileURLWithPath: backupPath))
-                try backupData.write(to: URL(fileURLWithPath: destPath), options: .atomic)
-                UserDefaults.standard.set(true, forKey: restoreCompletedKey(for: game))
-                try fm.removeItem(atPath: backupPath)
-                try? fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: destPath)
-            } catch {
-                return InjectorResult(success: false,
-                    message: "Error al restaurar: \(error.localizedDescription)")
-            }
-        } else if UserDefaults.standard.bool(forKey: originalMissingKey(for: game)) {
-            do {
-                if fm.fileExists(atPath: destPath) { try fm.removeItem(atPath: destPath) }
-                UserDefaults.standard.set(true, forKey: restoreCompletedKey(for: game))
-            } catch {
-                return InjectorResult(success: false,
-                    message: "Error al retirar el archivo temporal: \(error.localizedDescription)")
-            }
-        } else if UserDefaults.standard.bool(forKey: restoreCompletedKey(for: game)) {
-            // El original ya quedó escrito; se conserva la confirmación tras un cierre inesperado.
         } else {
-            return InjectorResult(success: false,
-                message: "No hay un respaldo restaurable; no se confirmó la limpieza.")
+            UserDefaults.standard.set(true, forKey: originalMissingKey(for: game))
         }
 
-        UserDefaults.standard.set(false, forKey: originalMissingKey(for: game))
+        // --- Escribir el recurso inyectado ---
+        NotificationCenter.default.post(name: .nyxelInjectionProgress, object: "Inyectando \(mode.displayName)...")
+
+        let containerForWrite = container ?? "/not-available"
+        let writeError = writeToContainer(finalData, relPath: activeRel, container: containerForWrite, bundleID: bid)
+        if let writeError = writeError {
+            return InjectorResult(success: false,
+                message: "Error al inyectar: \(writeError.localizedDescription)")
+        }
+
+        NyxelActivityLog.record("========== INJECTION TRACE END (success) ==========")
 
         return InjectorResult(success: true,
-            message: "Sesión limpia. Pulsa Abrir juego para volver a Free Fire.")
+            message: "\(mode.displayName) inyectado con exito!")
     }
 
-    /// Resultado del chequeo de compatibilidad del dispositivo.
-	enum Compat {
-		case compatible          // puede acceder al contenedor -> puede inyectar
-		case noGameInstalled     // Free Fire no esta instalado
-		case notCompatible       // el juego esta pero no se puede acceder (iOS no compatible)
-		case unsupportedSystem   // la versión/build del sistema no está verificada
+    // MARK: - Compatibility check
+
+    enum Compat {
+        case compatible
+        case noGameInstalled
+        case notCompatible
+        case unsupportedSystem
     }
 
-	/// Prueba REAL si el dispositivo puede inyectar, intentando acceder al
-	/// contenedor de Free Fire (MAX o normal) via MCM. No inyecta nada.
-	static func checkCompatibility() -> Compat {
-		guard NyxelSupportPolicy.isCurrentSystemSupported else {
-			return .unsupportedSystem
-		}
+    static func checkCompatibility() -> Compat {
+        guard NyxelSupportPolicy.isCurrentSystemSupported else {
+            return .unsupportedSystem
+        }
 
-		let fm = FileManager.default
+        if requiresPairingTransportOnCurrentDevice() {
+            return NixelAirLiftFileChannel.isAvailable ? .compatible : .notCompatible
+        }
+
+        let fm = FileManager.default
         let bundles = ["com.dts.freefiremax", "com.dts.freefireth"]
 
         var algunInstalado = false
         for bid in bundles {
             var err: NSString?
             if let container = DavizinGetContainerPath(bid, &err) {
-                // Conseguimos el contenedor: probamos que exista y sea accesible
                 if fm.fileExists(atPath: container) {
                     return .compatible
                 }
                 algunInstalado = true
             }
         }
-        // Si obtuvimos algun path pero no accesible -> instalado pero no compatible
-        // Si nunca obtuvimos path -> el juego no esta instalado
         return algunInstalado ? .notCompatible : .noGameInstalled
     }
-
 }

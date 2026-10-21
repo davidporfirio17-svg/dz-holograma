@@ -7,6 +7,7 @@ final class DavizinBridge {
     private weak var vc: ViewController?
     private var countdownTimer: Timer?
     private var remainingSeconds: Int = 0
+    private var injectionProgressObserver: NSObjectProtocol?
 
     /// Modo elegido por el usuario. Define que cache_res se inyecta.
     private var selectedMode: DavizinMode?
@@ -21,6 +22,17 @@ final class DavizinBridge {
 
     func connect(to viewController: ViewController) {
         self.vc = viewController
+        if let injectionProgressObserver {
+            NotificationCenter.default.removeObserver(injectionProgressObserver)
+        }
+        injectionProgressObserver = NotificationCenter.default.addObserver(
+            forName: .nyxelInjectionProgress,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let message = notification.object as? String else { return }
+            self?.vc?.setOperationProgress(message)
+        }
         // Restaurar el ultimo juego y modo elegidos
         if let g = UserDefaults.standard.string(forKey: "dz_last_game"), let game = DavizinGame(rawValue: g) {
             selectedGame = game
@@ -100,19 +112,36 @@ final class DavizinBridge {
     }
 
     private func continueAfterLogin() {
-        if NyxelCleanupFlow.hasPendingWork, let game = NyxelCleanupFlow.game {
-            selectedGame = game
-            let savedModeID = UserDefaults.standard.string(forKey: "dz_last_mode")
-            let mode = selectedMode ?? savedModeID.flatMap { DavizinModeCatalog.mode(id: $0) }
-            vc?.showCleanupRecoveryScreen(for: game, mode: mode)
-        } else {
-            vc?.showGameSelectionScreen()
-        }
+        vc?.showGameSelectionScreen()
     }
 
     // MARK: - Operaciones
 
     private func performInjection(game: DavizinGame, mode: DavizinMode, key: String, hwid: String) {
+        let device = NyxelDeviceInfo.versionTuple
+        let pairingRequired = NyxelSupportPolicy.requiresPairingTunnel(
+            major: device.major, minor: device.minor,
+            patch: device.patch, build: NyxelSupportPolicy.currentBuild
+        )
+        if pairingRequired {
+            let netState = NyxelCellularPreflight.currentState()
+            if netState == .cellularOnly {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, let vc = self.vc else { return }
+                    NyxelCellularPreflight.presentAirplaneModeGuide(
+                        from: vc,
+                        onContinue: { [weak self] in
+                            self?.performInjection(game: game, mode: mode, key: key, hwid: hwid)
+                        },
+                        onCancel: { [weak self] in
+                            self?.operationInFlight = false
+                            self?.vc?.setOperationState(.failed("Operación cancelada: activa Modo Avión para operar con datos."))
+                        }
+                    )
+                }
+                return
+            }
+        }
         vc?.setOperationState(.injecting)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
@@ -157,20 +186,6 @@ final class DavizinBridge {
             vc?.setOperationState(.failed("NYX-006 — Ya hay una operación en curso."))
             return
         }
-        if operation == .inject && NyxelCleanupFlow.hasPendingWork {
-            vc?.setOperationState(.failed("Limpia sesión sí o sí antes de volver a inyectar."))
-            return
-        }
-        if operation == .clean {
-            guard NyxelCleanupFlow.stage == .needsCleaning else {
-                vc?.setOperationState(.failed("No hay una limpieza pendiente que pueda confirmarse."))
-                return
-            }
-            if let pendingGame = NyxelCleanupFlow.game { selectedGame = pendingGame }
-            operationInFlight = true
-            executeAuthorizedOperation(.clean)
-            return
-        }
         guard !sessionKey.isEmpty else {
             vc?.setOperationState(.failed("NYX-001 — Sesión no autorizada."))
             return
@@ -212,24 +227,6 @@ final class DavizinBridge {
                     return
                 }
                 self.startInjectionFlow()
-            }
-
-        case .clean:
-            vc?.setOperationState(.cleaning)
-            let game = selectedGame
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                guard let self = self else { return }
-                let result = InjectorService.uninject(game: game)
-                DispatchQueue.main.async {
-                    self.hapticFeedback(success: result.success)
-                    self.operationInFlight = false
-                    if result.success { NyxelCleanupFlow.markCleaningSucceeded(for: game) }
-                    self.vc?.setOperationState(
-                        result.success
-                            ? .succeeded(result.message)
-                            : .failed(result.message)
-                    )
-                }
             }
         }
     }

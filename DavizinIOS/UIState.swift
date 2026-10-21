@@ -92,138 +92,24 @@ enum DavizinModeCatalog {
     }
 }
 
-enum DavizinOperationKind: String, CaseIterable { case runExploit = "Run Exploit", inject = "Inject", clean = "Clean" }
+enum DavizinOperationKind: String, CaseIterable { case runExploit = “Run Exploit”, inject = “Inject” }
 enum DavizinOperationState: Equatable {
-    case idle, checking, running, injecting, cleaning, succeeded(String), failed(String)
-    var isBusy: Bool { switch self { case .checking, .running, .injecting, .cleaning: return true; case .idle, .succeeded, .failed: return false } }
+    case idle, checking, running, injecting, succeeded(String), failed(String)
+    var isBusy: Bool { switch self { case .checking, .running, .injecting: return true; case .idle, .succeeded, .failed: return false } }
 }
 
-enum NyxelCleanupStage: String {
-    case idle
-    case readyToOpen
-    case waitingForReturn
-    case needsCleaning
-    case readyToReopen
-}
+enum NyxelCleanupStage: String { case idle }
 
-/// Estado local de prueba para que una limpieza pendiente sobreviva al cierre de Nyxel.
 enum NyxelCleanupFlow {
-    private static let stageKey = "nyxel.test.cleanup.stage"
-    private static let gameKey = "nyxel.test.cleanup.game"
-    private static let notificationID = "nyxel.test.cleanup.reminder"
-    private static let center = UNUserNotificationCenter.current()
-
-    private static var storedStage: NyxelCleanupStage {
-        get {
-            guard let raw = UserDefaults.standard.string(forKey: stageKey),
-                  let value = NyxelCleanupStage(rawValue: raw) else { return .idle }
-            return value
-        }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: stageKey) }
-    }
-
-    static var stage: NyxelCleanupStage { storedStage }
-
-    private static var storedGame: DavizinGame? {
-        get {
-            guard let raw = UserDefaults.standard.string(forKey: gameKey) else { return nil }
-            return DavizinGame(rawValue: raw)
-        }
-        set {
-            if let newValue { UserDefaults.standard.set(newValue.rawValue, forKey: gameKey) }
-            else { UserDefaults.standard.removeObject(forKey: gameKey) }
-        }
-    }
-
-    static var game: DavizinGame? { storedGame }
-
-    static var hasPendingWork: Bool { stage != .idle }
-
-    static func markInjectionWriteStarted(for game: DavizinGame) {
-        storedGame = game
-        storedStage = .needsCleaning
-        cancelReminder()
-    }
-
-    static func markInjectionSucceeded(for game: DavizinGame) {
-        guard storedGame == game else { return }
-        storedStage = .readyToOpen
-    }
-
-    static func requestReminderPermission(completion: @escaping (Bool) -> Void) {
-        center.getNotificationSettings { settings in
-            switch settings.authorizationStatus {
-            case .authorized, .provisional, .ephemeral:
-                completion(true)
-            case .notDetermined:
-                center.requestAuthorization(options: [.alert, .sound]) { allowed, _ in
-                    completion(allowed)
-                }
-            default:
-                completion(false)
-            }
-        }
-    }
-
-    static func markGameOpened() {
-        switch stage {
-        case .readyToOpen:
-            storedStage = .waitingForReturn
-            scheduleReminder()
-        case .readyToReopen:
-            finishCycle()
-        case .idle, .waitingForReturn, .needsCleaning:
-            break
-        }
-    }
-
-    static func markReturnedToNyxel() {
-        guard stage == .waitingForReturn else { return }
-        storedStage = .needsCleaning
-        cancelReminder()
-    }
-
-    static func prepareForRelaunch() {
-        if stage == .waitingForReturn {
-            storedStage = .needsCleaning
-        }
-        cancelReminder()
-    }
-
-    /// Un cierre completo de Nyxel debe iniciar una sesión nueva desde la pantalla de la key.
-    /// El flujo de recuperación solo se conserva mientras la app permanece activa o vuelve
-    /// del segundo plano sin haber sido terminada.
-    static func resetForFreshLaunch() {
-        storedStage = .idle
-        storedGame = nil
-        cancelReminder()
-    }
-
-    static func markCleaningSucceeded(for game: DavizinGame) {
-        guard stage == .needsCleaning, storedGame == game else { return }
-        storedStage = .readyToReopen
-        cancelReminder()
-    }
-
-    static func finishCycle() {
-        storedStage = .idle
-        storedGame = nil
-        cancelReminder()
-    }
-
-    static func cancelReminder() {
-        center.removePendingNotificationRequests(withIdentifiers: [notificationID])
-        center.removeDeliveredNotifications(withIdentifiers: [notificationID])
-    }
-
-    private static func scheduleReminder() {
-        let content = UNMutableNotificationContent()
-        content.title = "Nyxel: limpia la sesión"
-        content.body = "Regresa a Nyxel y pulsa “Limpiar sesión” antes de volver a inyectar."
-        content.sound = .default
-        content.interruptionLevel = .timeSensitive
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)
-        let request = UNNotificationRequest(identifier: notificationID, content: content, trigger: trigger)
-        center.add(request)
-    }
+    static var stage: NyxelCleanupStage { .idle }
+    static var game: DavizinGame? { nil }
+    static var hasPendingWork: Bool { false }
+    static func markInjectionWriteStarted(for game: DavizinGame) {}
+    static func markInjectionSucceeded(for game: DavizinGame) {}
+    static func markCleaningSucceeded(for game: DavizinGame) {}
+    static func markGameOpened() {}
+    static func markReturnedToNyxel() {}
+    static func resetForFreshLaunch() {}
+    static func requestReminderPermission(completion: @escaping (Bool) -> Void) { completion(false) }
+    static func cancelReminder() {}
 }
