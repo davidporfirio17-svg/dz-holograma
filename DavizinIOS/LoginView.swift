@@ -22,7 +22,7 @@ private enum NyxelKeychain {
     static func save(_ value: String) {
         let data = Data(value.uppercased().utf8)
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
-        let attributes: [String: Any] = [kSecValueData as String: data, kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
+        let attributes: [String: Any] = [kSecValueData as String: data, kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
         if SecItemUpdate(query as CFDictionary, attributes as CFDictionary) != errSecSuccess {
             var item = query; attributes.forEach { item[$0.key] = $0.value }
             SecItemAdd(item as CFDictionary, nil)

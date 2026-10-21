@@ -9,75 +9,6 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-      with:
-        submodules: recursive
-
-    - name: Build AirLiftFFI transport backend
-      run: |
-        set -euo pipefail
-        rustup target add aarch64-apple-ios aarch64-apple-ios-sim
-        cargo build \
-          --manifest-path airlift-rust-core/Cargo.toml \
-          --release \
-          --target aarch64-apple-ios
-        cargo build \
-          --manifest-path airlift-rust-core/Cargo.toml \
-          --release \
-          --target aarch64-apple-ios-sim
-        test -f airlift-rust-core/target/aarch64-apple-ios/release/libairlift_ffi.a
-        test -f airlift-rust-core/target/aarch64-apple-ios-sim/release/libairlift_ffi.a
-        rm -rf /tmp/airlift /tmp/AirliftFFI.xcframework
-        mkdir -p /tmp/airlift
-        cp airlift-rust-core/target/aarch64-apple-ios/release/libairlift_ffi.a /tmp/airlift/
-        cp airlift-rust-core/include/airlift.h airlift-rust-core/include/module.modulemap /tmp/airlift/
-        xcodebuild -create-xcframework \
-          -library airlift-rust-core/target/aarch64-apple-ios/release/libairlift_ffi.a \
-          -headers airlift-rust-core/include \
-          -library airlift-rust-core/target/aarch64-apple-ios-sim/release/libairlift_ffi.a \
-          -headers airlift-rust-core/include \
-          -output /tmp/AirliftFFI.xcframework
-        cp -R /tmp/AirliftFFI.xcframework /tmp/airlift/
-
-    - name: Add kexploit and mcm_bridge files to Xcode project
-      run: |
-        gem install xcodeproj --no-document
-        ruby <<'RUBY'
-          require "xcodeproj"
-          project_path = "DavizinIOS.xcodeproj"
-          project = Xcodeproj::Project.open(project_path)
-          target = project.targets.find { |t| t.name == "DavizinIOS" }
-          raise "Target not found" unless target
-
-          davizin_group = project.main_group["DavizinIOS"] || project.main_group
-
-          # Add kexploit files
-          kexploit_group = davizin_group["kexploit"]
-          if kexploit_group.nil?
-            kexploit_group = davizin_group.new_group("kexploit", "kexploit")
-          end
-
-          Dir.glob("DavizinIOS/kexploit/*.{m,h,c}").sort.each do |file|
-            basename = File.basename(file)
-            next if kexploit_group.files.any? { |f| f.path == basename }
-            file_ref = kexploit_group.new_file(basename)
-            if file.end_with?(".m") || file.end_with?(".c")
-              target.add_file_references([file_ref])
-              puts "Added kexploit: #{basename}"
-            end
-          end
-
-          # Add mcm_bridge.m
-          mcm_file = davizin_group.files.find { |f| f.path.end_with?("mcm_bridge.m") }
-          if mcm_file.nil?
-            mcm_file = davizin_group.new_file("mcm_bridge.m")
-            target.add_file_references([mcm_file])
-            puts "Added mcm_bridge.m"
-          end
-
-          project.save
-          puts "Project saved."
-        RUBY
-        ls -la DavizinIOS/kexploit/ DavizinIOS/mcm_bridge.*
 
     - name: Build
       run: |
@@ -96,8 +27,6 @@ jobs:
           ONLY_ACTIVE_ARCH=NO \
           ALWAYS_SEARCH_USER_PATHS=NO \
           BUILD_DIR=/tmp/davizin_build \
-          LIBRARY_SEARCH_PATHS=/tmp/airlift \
-          FRAMEWORK_SEARCH_PATHS=/tmp/airlift \
           build > /tmp/build.log 2>&1
         status=$?
         set -e
@@ -144,15 +73,6 @@ jobs:
         echo "Embedding entitlements into: $BINARY"
         ldid -SDavizinIOS/DavizinIOS.entitlements "$BINARY"
         echo "Entitlements embedded successfully"
-
-        # Also sign the Network Extension if present
-        TUNNEL_APPEX="$APP/PlugIns/ExternalTunnel.appex"
-        if [ -d "$TUNNEL_APPEX" ]; then
-          TUNNEL_BINARY="$TUNNEL_APPEX/$(defaults read "$TUNNEL_APPEX/Info.plist" CFBundleExecutable)"
-          echo "Embedding entitlements into tunnel: $TUNNEL_BINARY"
-          ldid -SExternalTunnel/ExternalTunnel.entitlements "$TUNNEL_BINARY"
-          echo "Tunnel entitlements embedded"
-        fi
 
     - name: Create IPA
       run: |

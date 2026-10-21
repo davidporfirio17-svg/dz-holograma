@@ -1,262 +1,151 @@
 #import "DavizinMCM.h"
-#import "kexploit/bad_query.h"
 #import <Foundation/Foundation.h>
 #import <dlfcn.h>
 #import <stdlib.h>
-#import <xpc/xpc.h>
 #import <fcntl.h>
-#import <os/lock.h>
 
-#pragma mark - C API types (container_query_* from libsystem_containermanager)
+// Tipos XPC sin importar xpc/xpc.h
+typedef void *xpc_obj_t;
+typedef xpc_obj_t (*xpc_string_create_fn)(const char *);
 
-typedef void *(*MCMQueryCreate_t)(void);
-typedef void  (*MCMQuerySetU64_t)(void *, uint64_t);
-typedef void  (*MCMQuerySetXPC_t)(void *, xpc_object_t);
-typedef void *(*MCMQueryGetSingle_t)(void *);
-typedef void *(*MCMQueryGetError_t)(void *);
-typedef void  (*MCMQueryFree_t)(void *);
-typedef const char *(*MCMObjectGetPath_t)(void *);
-typedef void *(*MCMObjectCopy_t)(void *);
-typedef char *(*MCMObjectCopyToken_t)(void *);
-typedef bool  (*MCMObjectActivate_t)(void *, bool);
-typedef void  (*MCMObjectFree_t)(void *);
-typedef int   (*MCMErrorGetPOSIX_t)(void *);
-typedef const char *(*MCMErrorGetMessage_t)(void *);
+// Tipos containermanager
+typedef void *(*cm_query_create_fn)(void);
+typedef void  (*cm_query_set_u64_fn)(void *, uint64_t);
+typedef void  (*cm_query_set_xpc_fn)(void *, xpc_obj_t);
+typedef void *(*cm_query_single_fn)(void *);
+typedef void *(*cm_query_err_fn)(void *);
+typedef void  (*cm_query_free_fn)(void *);
+typedef const char *(*cm_path_fn)(void *);
+typedef char *(*cm_token_fn)(void *);
+typedef void  (*cm_free_fn)(void *);
+typedef int   (*cm_posix_fn)(void *);
+typedef const char *(*cm_msg_fn)(void *);
+typedef int64_t (*sb_consume_fn)(const char *);
 
 typedef struct {
-    void *handle;
-    MCMQueryCreate_t    queryCreate;
-    MCMQuerySetU64_t    querySetClass;
-    MCMQuerySetXPC_t    querySetIdentifiers;
-    MCMQuerySetU64_t    querySetFlags;
-    MCMQuerySetU64_t    querySetPart;
-    MCMQueryGetSingle_t queryGetSingle;
-    MCMQueryGetError_t  queryGetLastError;
-    MCMQueryFree_t      queryFree;
-    MCMObjectGetPath_t  objectGetPath;
-    MCMObjectCopy_t     objectCopy;
-    MCMObjectCopyToken_t objectCopyToken;
-    MCMObjectActivate_t objectActivate;
-    MCMObjectFree_t     objectFree;
-    MCMErrorGetPOSIX_t  errorGetPOSIX;
-    MCMErrorGetMessage_t errorGetMessage;
-} MCMAPI;
+    cm_query_create_fn  create;
+    cm_query_set_u64_fn setClass;
+    cm_query_set_xpc_fn setIds;
+    cm_query_set_u64_fn setFlags;
+    cm_query_single_fn  getSingle;
+    cm_query_err_fn     getErr;
+    cm_query_free_fn    freeQ;
+    cm_path_fn          getPath;
+    cm_token_fn         getToken;
+    cm_free_fn          freeObj;
+    cm_posix_fn         posix;
+    cm_msg_fn           msg;
+    xpc_string_create_fn xpcStr;
+    sb_consume_fn        sbConsume;
+} API;
 
-static MCMAPI *MCMGetAPI(void) {
-    static MCMAPI api;
+static API *getAPI(void) {
+    static API api;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        api.handle = dlopen("/usr/lib/system/libsystem_containermanager.dylib",
-                            RTLD_NOW | RTLD_LOCAL);
-        void *h = api.handle ? api.handle : RTLD_DEFAULT;
-#define LOAD(f, sym) api.f = (__typeof(api.f))dlsym(h, sym)
-        LOAD(queryCreate,        "container_query_create");
-        LOAD(querySetClass,      "container_query_set_class");
-        LOAD(querySetIdentifiers,"container_query_set_identifiers");
-        LOAD(querySetFlags,      "container_query_operation_set_flags");
-        LOAD(queryGetSingle,     "container_query_get_single_result");
-        LOAD(queryGetLastError,  "container_query_get_last_error");
-        LOAD(queryFree,          "container_query_free");
-        LOAD(objectGetPath,      "container_object_get_path");
-        LOAD(objectCopy,         "container_object_copy");
-        LOAD(objectCopyToken,    "container_copy_sandbox_token");
-        LOAD(objectActivate,     "container_object_sandbox_extension_activate");
-        LOAD(objectFree,         "container_object_free");
-        LOAD(querySetPart,       "container_query_operation_set_part");
-        LOAD(errorGetPOSIX,      "container_error_get_posix_errno");
-        LOAD(errorGetMessage,    "container_error_get_message");
-#undef LOAD
+        void *cm = dlopen("/usr/lib/system/libsystem_containermanager.dylib", RTLD_NOW|RTLD_LOCAL);
+        void *h  = cm ? cm : RTLD_DEFAULT;
+        void *xh = dlopen("/usr/lib/system/libxpc.dylib", RTLD_NOW|RTLD_LOCAL);
+        if (!xh) xh = RTLD_DEFAULT;
+        void *sh = dlopen("/usr/lib/system/libsystem_sandbox.dylib", RTLD_NOW|RTLD_LOCAL);
+        if (!sh) sh = RTLD_DEFAULT;
+
+#define G(lib,field,sym) api.field = (__typeof(api.field))dlsym(lib,sym)
+        G(h,  create,    "container_query_create");
+        G(h,  setClass,  "container_query_set_class");
+        G(h,  setIds,    "container_query_set_identifiers");
+        G(h,  setFlags,  "container_query_operation_set_flags");
+        G(h,  getSingle, "container_query_get_single_result");
+        G(h,  getErr,    "container_query_get_last_error");
+        G(h,  freeQ,     "container_query_free");
+        G(h,  getPath,   "container_object_get_path");
+        G(h,  getToken,  "container_copy_sandbox_token");
+        G(h,  freeObj,   "container_object_free");
+        G(h,  posix,     "container_error_get_posix_errno");
+        G(h,  msg,       "container_error_get_message");
+        G(xh, xpcStr,    "xpc_string_create");
+        G(sh, sbConsume, "sandbox_extension_consume");
+#undef G
     });
     return &api;
 }
 
-#pragma mark - Lease storage (C-based, avoids NSMutableDictionary crash on iOS 27)
+// Signing ID via dlsym
+typedef void *(*SecTaskCreateFn)(void *);
+typedef void *(*SecTaskCopyIDFn)(void *, void **);
 
-typedef struct {
-    void *query;
-    void *activation;
-    char  bundleID[256];
-    char  path[1024];
-    bool  active;
-} MCMLease;
-
-#define MAX_LEASES 4
-static MCMLease sLeases[MAX_LEASES];
-static os_unfair_lock sLeaseLock = OS_UNFAIR_LOCK_INIT;
-
-static MCMLease *findLease(const char *bundleID) {
-    for (int i = 0; i < MAX_LEASES; i++) {
-        if (sLeases[i].active && strcmp(sLeases[i].bundleID, bundleID) == 0)
-            return &sLeases[i];
-    }
-    return NULL;
+static NSString *getSigningID(void) {
+    static NSString *result;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        SecTaskCreateFn cfn = (SecTaskCreateFn)dlsym(RTLD_DEFAULT, "SecTaskCreateFromSelf");
+        SecTaskCopyIDFn idfn = (SecTaskCopyIDFn)dlsym(RTLD_DEFAULT, "SecTaskCopySigningIdentifier");
+        if (cfn && idfn) {
+            void *task = cfn(NULL);
+            if (task) {
+                void *err = NULL;
+                void *val = idfn(task, &err);
+                if (val) { result = [(__bridge NSString *)val copy]; CFRelease(val); }
+                CFRelease(task);
+            }
+        }
+    });
+    return result;
 }
 
-static MCMLease *allocLease(void) {
-    for (int i = 0; i < MAX_LEASES; i++) {
-        if (!sLeases[i].active) return &sLeases[i];
-    }
-    return &sLeases[0];
-}
-
-#pragma mark - Logging
-
-static inline void DavizinMCMLog(NSString *msg) {
-    NSLog(@"[DavizinMCM] %@", msg);
-}
-
-#pragma mark - bad_query grant helpers
-
-static inline BOOL shouldUseBadQuery(void) {
-    NSOperatingSystemVersion osVersion = [[NSProcessInfo processInfo] operatingSystemVersion];
-    return osVersion.majorVersion >= 26;
-}
-
-int64_t DavizinGrantContainerAccess(const char *containerPath) {
-    if (!shouldUseBadQuery()) {
-        return -1;
-    }
-
-    NSString *cleanPath = [NSString stringWithUTF8String:containerPath];
-    if ([cleanPath hasSuffix:@"/"]) {
-        cleanPath = [cleanPath substringToIndex:cleanPath.length - 1];
-    }
-
-    const char *pathC = [cleanPath UTF8String];
-    int64_t handle = bad_query((char *)pathC, true, NULL, false);
-
-    if (handle >= 0) {
-        DavizinMCMLog([NSString stringWithFormat:@"Grant obtenido para %@: handle=%lld", cleanPath, handle]);
-    } else {
-        DavizinMCMLog([NSString stringWithFormat:@"Grant FALLÓ para %@: handle=%lld", cleanPath, handle]);
-    }
-
-    return handle;
-}
-
-void DavizinReleaseContainerGrant(int64_t handle) {
-    if (handle >= 0) {
-        bad_query_release(handle);
-        DavizinMCMLog([NSString stringWithFormat:@"Grant liberado: handle=%lld", handle]);
-    }
-}
-
-#pragma mark - Container path lookup (direct C API with persistent lease)
-
-NSString *DavizinGetContainerPath(NSString *bundleID, NSString **outError) {
-    static const NSString *kRequiredID = @"com.apple.mobile.MobileHouseArrest";
-    static const uint64_t kFlags = 0x900000000ULL;
+NSString *DavizinGetContainerPath(NSString *bundleID, NSString **outErr) {
     static const uint64_t kClass = 2;
+    static const uint64_t kFlags = 0x900000000ULL;
 
-    if (!bundleID || bundleID.length == 0) {
-        if (outError) *outError = @"bundleID es nil o vacío";
+    NSString *sid = getSigningID();
+    if (![sid isEqualToString:@"com.apple.mobile.MobileHouseArrest"]) {
+        if (outErr) *outErr = [NSString stringWithFormat:@"Signing ID: '%@'", sid];
         return nil;
     }
 
-    NSString *currentID = NSBundle.mainBundle.bundleIdentifier;
-    if (![currentID isEqualToString:(NSString *)kRequiredID]) {
-        if (outError) *outError = [NSString stringWithFormat:
-            @"Bundle ID: '%@'", currentID];
+    API *api = getAPI();
+    if (!api->create || !api->getSingle || !api->getPath) {
+        if (outErr) *outErr = @"containermanager no disponible";
         return nil;
     }
 
-    const char *bid = bundleID.UTF8String;
+    void *query = api->create();
+    if (!query) { if (outErr) *outErr = @"query NULL"; return nil; }
 
-    os_unfair_lock_lock(&sLeaseLock);
-    MCMLease *existing = findLease(bid);
-    if (existing && existing->path[0]) {
-        NSString *cachedPath = [NSString stringWithUTF8String:existing->path];
-        os_unfair_lock_unlock(&sLeaseLock);
-        return cachedPath;
+    api->setClass(query, kClass);
+    if (api->xpcStr) {
+        xpc_obj_t xid = api->xpcStr(bundleID.UTF8String);
+        if (xid) api->setIds(query, xid);
     }
-    os_unfair_lock_unlock(&sLeaseLock);
+    api->setFlags(query, kFlags);
 
-    MCMAPI *api = MCMGetAPI();
-    if (!api->queryCreate || !api->queryGetSingle || !api->objectGetPath) {
-        if (outError) *outError = @"containermanager no disponible";
+    void *obj = api->getSingle(query);
+    if (!obj) {
+        int p = 0; const char *m = NULL;
+        void *e = api->getErr ? api->getErr(query) : NULL;
+        if (e) { if (api->posix) p = api->posix(e); if (api->msg) m = api->msg(e); }
+        if (outErr) *outErr = [NSString stringWithFormat:@"No encontrado '%@' posix=%d %s", bundleID, p, m?:""];
+        api->freeQ(query);
         return nil;
     }
 
-    // Single query with activation flags — matches MCMRetainedLease pattern exactly
-    void *query = api->queryCreate();
-    if (!query) {
-        if (outError) *outError = @"query_create devolvió NULL";
+    const char *raw = api->getPath(obj);
+    NSString *path = raw ? @(raw) : nil;
+    if (!path || !path.isAbsolutePath) {
+        if (outErr) *outErr = @"Path inválido";
+        api->freeQ(query);
         return nil;
     }
 
-    api->querySetClass(query, kClass);
-    xpc_object_t xpcID = xpc_string_create(bid);
-    api->querySetIdentifiers(query, xpcID);
-    api->querySetFlags(query, kFlags);
-    if (api->querySetPart) api->querySetPart(query, 0);
-
-    void *result = api->queryGetSingle(query);
-    if (!result) {
-        void *qErr = api->queryGetLastError ? api->queryGetLastError(query) : NULL;
-        int posix = qErr && api->errorGetPOSIX ? api->errorGetPOSIX(qErr) : 0;
-        const char *msg = qErr && api->errorGetMessage ? api->errorGetMessage(qErr) : NULL;
-        if (outError) *outError = [NSString stringWithFormat:
-            @"No encontrado '%@' posix=%d %s", bundleID, posix, msg ?: ""];
-        DavizinMCMLog([NSString stringWithFormat:@"Container no encontrado para %@: posix=%d", bundleID, posix]);
-        api->queryFree(query);
-        return nil;
-    }
-
-    const char *rawPath = api->objectGetPath(result);
-    NSString *path = rawPath ? [NSString stringWithUTF8String:rawPath] : nil;
-
-    if (path.length == 0 || !path.isAbsolutePath) {
-        if (outError) *outError = @"Path inválido";
-        api->queryFree(query);
-        return nil;
-    }
-
-    if ([path isEqualToString:@"/var"] || [path hasPrefix:@"/var/"])
+    if ([path hasPrefix:@"/var/"])
         path = [@"/private" stringByAppendingString:path];
 
-    // Activate sandbox extension and keep it alive (same as MCMRetainedLease.activate)
-    void *activation = api->objectCopy ? api->objectCopy(result) : NULL;
-    if (activation) {
-        char *token = api->objectCopyToken ? api->objectCopyToken(activation) : NULL;
-        bool activated = false;
-        if (token && token[0] != '\0') {
-            activated = api->objectActivate(activation, false);
-        }
-        free(token);
-
-        if (activated) {
-            os_unfair_lock_lock(&sLeaseLock);
-            MCMLease *lease = allocLease();
-            if (lease->active && lease->query) {
-                if (lease->activation && api->objectFree) api->objectFree(lease->activation);
-                api->queryFree(lease->query);
-            }
-            lease->query = query;
-            lease->activation = activation;
-            strlcpy(lease->bundleID, bid, sizeof(lease->bundleID));
-            strlcpy(lease->path, path.UTF8String, sizeof(lease->path));
-            lease->active = true;
-            os_unfair_lock_unlock(&sLeaseLock);
-
-            DavizinMCMLog([NSString stringWithFormat:@"Lease ACTIVADA para %@: %@", bundleID, path]);
-            return path;
-        } else {
-            if (api->objectFree) api->objectFree(activation);
-        }
+    if (api->getToken) {
+        char *tok = api->getToken(obj);
+        if (tok && tok[0] && api->sbConsume) api->sbConsume(tok);
+        if (tok) free(tok);
     }
 
-    // Activation failed but path is valid — keep query alive anyway, bad_query might work
-    DavizinMCMLog([NSString stringWithFormat:@"Container encontrado (sin lease) para %@: %@", bundleID, path]);
-    api->queryFree(query);
+    api->freeQ(query);
     return path;
-}
-
-#pragma mark - Stubs
-
-NSString *DavizinPrepareInjectionQuery(NSString *bundleID, NSString **outErr) {
-    return nil;
-}
-
-NSString *DavizinMCMLastDiagnostic(void) {
-    return @"Using direct container_query C API with persistent lease";
 }

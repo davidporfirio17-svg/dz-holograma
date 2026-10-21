@@ -1,68 +1,16 @@
 import UIKit
 import UserNotifications
 
-@_silgen_name("ALGetGrappaToken")
-private func retainGrappaTokenSymbol(
-    _ version: UInt32,
-    _ deviceType: UInt32,
-    _ protocolVersion: UInt32,
-    _ output: UnsafeMutablePointer<UInt8>?,
-    _ maximumLength: Int,
-    _ outputLength: UnsafeMutablePointer<Int>?,
-    _ errorBuffer: UnsafeMutablePointer<CChar>?,
-    _ errorLength: Int
-) -> Int32
-
 @main
 final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        // Defensa anti-tamper lo más temprano posible: deniega engancharle un
-        // debugger. Debe ser la PRIMERA línea del app antes de cualquier otra cosa.
-        NyxelAntiTamper.denyPtraceAttach()
-
-        // Si hay señales obvias de debugger/Frida/MobileSubstrate cargados,
-        // registramos un flag en memoria. La operación de inyección lo lee y
-        // degrada silenciosamente (sin mensaje al usuario, para no delatarle al
-        // atacante qué disparó la detección).
-        let verdict = NyxelAntiTamper.inspect()
-        if case .suspect(let code) = verdict {
-            NyxelRuntimeState.shared.markTampered(code: code)
-        }
-
-        // Medir hash del __TEXT. Hoy modo "medir, no bloquear" (expectedDigest()
-        // retorna nil). En release se pobla con el hash de la build y se compara.
-        _ = NyxelBinaryIntegrity.verify()
-
         // Initialize Nyxel logging and system detection
-        _ = retainGrappaTokenSymbol(0, 0, 0, nil, 0, nil, nil, 0)
         UNUserNotificationCenter.current().delegate = self
-        clearLegacyInjectionNotifications()
         application.logNyxelLaunchInfo()
         return true
-    }
-
-    private func clearLegacyInjectionNotifications() {
-        let center = UNUserNotificationCenter.current()
-        center.getPendingNotificationRequests { requests in
-            let identifiers = requests
-                .filter { Self.isLegacyInjectionNotification($0.content) }
-                .map(\.identifier)
-            center.removePendingNotificationRequests(withIdentifiers: identifiers)
-        }
-        center.getDeliveredNotifications { notifications in
-            let identifiers = notifications
-                .filter { Self.isLegacyInjectionNotification($0.request.content) }
-                .map { $0.request.identifier }
-            center.removeDeliveredNotifications(withIdentifiers: identifiers)
-        }
-    }
-
-    private static func isLegacyInjectionNotification(_ content: UNNotificationContent) -> Bool {
-        let title = content.title.uppercased()
-        return ["PASO", "SUCCESS", "FATAL", "NSERROR", "EXCEPTION"].contains { title.contains($0) }
     }
 
     /// Mostrar el recordatorio aunque Nyxel todavía esté en primer plano.

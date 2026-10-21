@@ -17,14 +17,7 @@ class AppState: ObservableObject {
     @Published var remainingSeconds: Int = 0
     @Published var isExpired: Bool = false
     
-    let appVersion: String = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "1.5"
-    /// GitHub Actions build number inyectado en Info.plist por el workflow.
-    /// Permite identificar qué IPA está instalada aunque la UI de versión se bugee.
-    static var ipaBuildNumber: String {
-        let raw = (Bundle.main.object(forInfoDictionaryKey: "NyxelBuildNumber") as? String) ?? ""
-        return raw.isEmpty ? "local" : raw
-    }
-    var ipaBuildNumber: String { AppState.ipaBuildNumber }
+    let appVersion: String = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "1.4"
     let freeFireBundleID = "com.dts.freefiremax"
     let freeFireName = "Free Fire MAX"
     

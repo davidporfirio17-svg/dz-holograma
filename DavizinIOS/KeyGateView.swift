@@ -37,7 +37,7 @@ struct KeyGateView: View {
                         .font(.system(size: 44, weight: .black, design: .rounded))
                         .foregroundStyle(LinearGradient(colors: [.cyan, Color(red: 0.0, green: 0.7, blue: 1.0)], startPoint: .leading, endPoint: .trailing))
                         .shadow(color: .cyan.opacity(0.5), radius: 12)
-                    Text("iOS Injector v\(appState.appVersion) · IPA #\(appState.ipaBuildNumber)")
+                    Text("iOS Injector v\(appState.appVersion)")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(.white.opacity(0.4))
                         .tracking(2)
