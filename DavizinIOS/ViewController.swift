@@ -308,13 +308,10 @@ final class ViewController: UIViewController {
         view.addSubview(contentContainerView)
 
         bottomNavView.onModes = { [weak self] in
-            self?.showGameSelection(animated: true)
+            self?.showModeSelection(animated: true)
         }
         bottomNavView.onProfile = { [weak self] in
             self?.showProfile(animated: true)
-        }
-        bottomNavView.onKexploit = { [weak self] in
-            self?.showKexploit(animated: true)
         }
         bottomNavView.onVPN = { [weak self] in
             self?.showVPN(animated: true)
@@ -534,7 +531,7 @@ final class ViewController: UIViewController {
 
     private func showKexploit(animated: Bool) {
         currentStage = .kexploit
-        setBottomNavigation(visible: true, selected: .kexploit)
+        setBottomNavigation(visible: true, selected: .modes)
         headerView.title = "iOS 26 · Kexploit"
         headerView.showsBackButton = true
         headerView.showsAvatarButton = false
@@ -770,20 +767,18 @@ final class ViewController: UIViewController {
             case .operation: showOperation(animated: true)
             case .modeSelection: showModeSelection(animated: true)
             case .gameSelection: showGameSelection(animated: true)
-            case .kexploit: showKexploit(animated: true)
             case .help: showHelp(animated: true)
-            default: showVersionSelector(animated: true)
+            default: showGameSelection(animated: true)
             }
         case .help:
             switch stageBeforeHelp {
             case .operation: showOperation(animated: true)
             case .profile: showProfile(animated: true)
             case .modeSelection: showModeSelection(animated: true)
-            case .kexploit: showKexploit(animated: true)
-            default: showVersionSelector(animated: true)
+            default: showGameSelection(animated: true)
             }
         case .kexploit:
-            showVersionSelector(animated: true)
+            showGameSelection(animated: true)
         }
     }
 }
@@ -919,11 +914,6 @@ extension ViewController: VersionSelectorDelegate {
             bottomNavView.setMode(.ios27)
         }
         onVersionSelected?(version)
-        switch version {
-        case .ios26:
-            showKexploit(animated: true)
-        case .ios27:
-            showGameSelection(animated: true)
-        }
+        showGameSelection(animated: true)
     }
 }

@@ -3,11 +3,10 @@ import UIKit
 final class DavizinBottomNavView: UIView {
     var onModes: (() -> Void)?
     var onProfile: (() -> Void)?
-    var onKexploit: (() -> Void)?
     var onVPN: (() -> Void)?
     var onHelp: (() -> Void)?
 
-    enum Item { case modes, profile, kexploit, vpn, help }
+    enum Item { case modes, profile, vpn, help }
     enum NavMode { case ios26, ios27 }
 
     private var currentMode: NavMode = .ios27
@@ -15,19 +14,16 @@ final class DavizinBottomNavView: UIView {
 
     private let modesButton = UIButton(type: .system)
     private let profileButton = UIButton(type: .system)
-    private let kexploitButton = UIButton(type: .system)
     private let vpnButton = UIButton(type: .system)
     private let helpButton = UIButton(type: .system)
 
     private let modesLabel = UILabel()
     private let profileLabel = UILabel()
-    private let kexploitLabel = UILabel()
     private let vpnLabel = UILabel()
     private let helpLabel = UILabel()
 
     private let modesIndicator = UIView()
     private let profileIndicator = UIView()
-    private let kexploitIndicator = UIView()
     private let vpnIndicator = UIView()
     private let helpIndicator = UIView()
 
@@ -56,7 +52,6 @@ final class DavizinBottomNavView: UIView {
         let allButtons: [(UIButton, UILabel, UIView, Item)] = [
             (modesButton, modesLabel, modesIndicator, .modes),
             (profileButton, profileLabel, profileIndicator, .profile),
-            (kexploitButton, kexploitLabel, kexploitIndicator, .kexploit),
             (vpnButton, vpnLabel, vpnIndicator, .vpn),
             (helpButton, helpLabel, helpIndicator, .help)
         ]
@@ -85,8 +80,7 @@ final class DavizinBottomNavView: UIView {
 
         configureButton(modesButton, image: "square.grid.2x2.fill", label: modesLabel, text: "MODOS", accessibility: "Modos", action: #selector(modesTapped))
         configureButton(profileButton, image: "person.crop.circle.fill", label: profileLabel, text: "PERFIL", accessibility: "Perfil", action: #selector(profileTapped))
-        configureButton(kexploitButton, image: "cpu.fill", label: kexploitLabel, text: "INICIO", accessibility: "Kexploit", action: #selector(kexploitTapped))
-        configureButton(vpnButton, image: "network", label: vpnLabel, text: "CONEXIÓN", accessibility: "Conexión VPN", action: #selector(vpnTapped))
+        configureButton(vpnButton, image: "iphone", label: vpnLabel, text: "iOS 27", accessibility: "iOS 27", action: #selector(vpnTapped))
         configureButton(helpButton, image: "questionmark.circle.fill", label: helpLabel, text: "AYUDA", accessibility: "Centro de ayuda", action: #selector(helpTapped))
     }
 
@@ -96,7 +90,6 @@ final class DavizinBottomNavView: UIView {
         let items: [UIView]
         switch mode {
         case .ios27:
-            modesLabel.text = "MODOS"
             items = [
                 makeItem(button: modesButton, label: modesLabel, indicator: modesIndicator),
                 makeItem(button: profileButton, label: profileLabel, indicator: profileIndicator),
@@ -104,9 +97,8 @@ final class DavizinBottomNavView: UIView {
                 makeItem(button: helpButton, label: helpLabel, indicator: helpIndicator)
             ]
         case .ios26:
-            kexploitLabel.text = "INICIO"
             items = [
-                makeItem(button: kexploitButton, label: kexploitLabel, indicator: kexploitIndicator),
+                makeItem(button: modesButton, label: modesLabel, indicator: modesIndicator),
                 makeItem(button: profileButton, label: profileLabel, indicator: profileIndicator),
                 makeItem(button: helpButton, label: helpLabel, indicator: helpIndicator)
             ]
@@ -165,7 +157,6 @@ final class DavizinBottomNavView: UIView {
 
     @objc private func modesTapped() { onModes?() }
     @objc private func profileTapped() { onProfile?() }
-    @objc private func kexploitTapped() { onKexploit?() }
     @objc private func vpnTapped() { onVPN?() }
     @objc private func helpTapped() { onHelp?() }
 }
