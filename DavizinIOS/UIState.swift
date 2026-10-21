@@ -92,7 +92,7 @@ enum DavizinModeCatalog {
     }
 }
 
-enum DavizinOperationKind: String, CaseIterable { case runExploit = “Run Exploit”, inject = “Inject” }
+enum DavizinOperationKind: String, CaseIterable { case runExploit = "Run Exploit", inject = "Inject" }
 enum DavizinOperationState: Equatable {
     case idle, checking, running, injecting, succeeded(String), failed(String)
     var isBusy: Bool { switch self { case .checking, .running, .injecting: return true; case .idle, .succeeded, .failed: return false } }
