@@ -713,7 +713,7 @@ final class DavizinBridge {
     static func kxpDetail(_ code: Int32) -> String {
         switch code {
         case 2:  return "Versión iOS no soportada"
-        case 11: return "IOSurface create falló"
+        case 11: return "IOSurface agotado — cierra la app completamente desde el multitarea y vuelve a abrir"
         case 12: return "Memory entry falló"
         case 13: return "VM map falló (phys)"
         case 21: return "VM alloc falló (pe_v1)"
@@ -738,7 +738,7 @@ final class DavizinBridge {
         default:
             if code >= 7100 && code < 7200 {
                 let kr = code - 7100
-                return "Race VM map falló (kr=\(kr))"
+                return "Race perdida (kr=\(kr)) — cierra la app desde el multitarea y vuelve a intentar"
             }
             return "No se pudo preparar el entorno"
         }
