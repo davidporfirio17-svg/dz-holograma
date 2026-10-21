@@ -160,3 +160,30 @@ NSString *DavizinGetContainerPath(NSString *bundleID, NSString **outError) {
     api->queryFree(query);
     return path;
 }
+
+int64_t DavizinGrantContainerAccess(NSString *path) {
+    if (!path) return 0;
+    typedef int64_t (*sb_consume_fn)(const char *);
+    static sb_consume_fn consume = NULL;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        void *h = dlopen("/usr/lib/system/libsystem_sandbox.dylib", RTLD_NOW|RTLD_LOCAL);
+        if (!h) h = RTLD_DEFAULT;
+        consume = (sb_consume_fn)dlsym(h, "sandbox_extension_consume");
+    });
+    if (!consume) return 0;
+    return consume(path.UTF8String);
+}
+
+void DavizinReleaseContainerGrant(int64_t handle) {
+    if (handle <= 0) return;
+    typedef int (*sb_release_fn)(int64_t);
+    static sb_release_fn release_ext = NULL;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        void *h = dlopen("/usr/lib/system/libsystem_sandbox.dylib", RTLD_NOW|RTLD_LOCAL);
+        if (!h) h = RTLD_DEFAULT;
+        release_ext = (sb_release_fn)dlsym(h, "sandbox_extension_release");
+    });
+    if (release_ext) release_ext(handle);
+}

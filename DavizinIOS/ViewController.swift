@@ -72,6 +72,10 @@ final class ViewController: UIViewController {
         loginView?.setStatus(text, success: success)
     }
 
+    func setOperationProgress(_ message: String) {
+        operationView?.setProgressMessage(message)
+    }
+
     func setOperationState(_ state: DavizinOperationState) {
         operationView?.setState(state)
         switch state {

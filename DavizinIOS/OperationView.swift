@@ -341,8 +341,12 @@ final class OperationView: UIView {
         setButtonsVisible(run: false, inject: false, openGame: true, animated: animated)
     }
 
-    func applyCleanupStage(_ stage: NyxelCleanupStage) {
-        // Cleanup removed from holograma IPA
+    func applyCleanupStage(_ stage: NyxelCleanupStage) {}
+
+    func setProgressMessage(_ message: String) {
+        statusLabel.text = message
+        statusLabel.isHidden = false
+        statusRow.isHidden = false
     }
 
     private func setButtonsVisible(run: Bool, inject: Bool, openGame: Bool, animated: Bool) {

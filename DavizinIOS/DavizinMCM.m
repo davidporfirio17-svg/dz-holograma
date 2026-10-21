@@ -149,3 +149,13 @@ NSString *DavizinGetContainerPath(NSString *bundleID, NSString **outErr) {
     api->freeQ(query);
     return path;
 }
+
+int64_t DavizinGrantContainerAccess(NSString *path) {
+    API *api = getAPI();
+    if (!api->sbConsume || !path) return 0;
+    return api->sbConsume(path.UTF8String);
+}
+
+void DavizinReleaseContainerGrant(int64_t handle) {
+    (void)handle;
+}

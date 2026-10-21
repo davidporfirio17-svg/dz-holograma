@@ -113,3 +113,7 @@ enum NyxelCleanupFlow {
     static func requestReminderPermission(completion: @escaping (Bool) -> Void) { completion(false) }
     static func cancelReminder() {}
 }
+
+extension Notification.Name {
+    static let nyxelInjectionProgress = Notification.Name("nyxelInjectionProgress")
+}

@@ -53,11 +53,19 @@ jobs:
           # Collect all .m/.c source files already in the target
           existing = target.source_build_phase.files.map { |f| f.file_ref&.real_path&.to_s }.compact
 
-          # Add any .m files under DavizinIOS/ not already in the target
-          Dir.glob("DavizinIOS/*.{m,c}").sort.each do |file|
+          # Add .h files as file references (not compile sources) so bridging header finds them
+          Dir.glob("DavizinIOS/*.h").sort.each do |file|
+            basename = File.basename(file)
+            unless davizin_group.files.any? { |f| f.path == basename }
+              davizin_group.new_file(basename)
+              puts "Added header ref: #{basename}"
+            end
+          end
+
+          # Add .m/.c/.swift files under DavizinIOS/ to compile sources
+          Dir.glob("DavizinIOS/*.{m,c,swift}").sort.each do |file|
             basename = File.basename(file)
             next if davizin_group.files.any? { |f| f.path == basename && target.source_build_phase.files.any? { |bf| bf.file_ref == f } }
-            # Check if file ref exists but isn't in target
             file_ref = davizin_group.files.find { |f| f.path == basename }
             unless file_ref
               file_ref = davizin_group.new_file(basename)
