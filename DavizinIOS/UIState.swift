@@ -1,7 +1,7 @@
 import Foundation
 import UserNotifications
 
-enum DavizinScreenStage: Equatable { case login, home, gameSelection, modeSelection, operation, profile, help, kexploit }
+enum DavizinScreenStage: Equatable { case login, versionSelector, home, gameSelection, modeSelection, operation, profile, help, kexploit }
 
 enum DavizinGame: String, CaseIterable { case freeFire = "Free Fire", freeFireMax = "Free Fire MAX" }
 

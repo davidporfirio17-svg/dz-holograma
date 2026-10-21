@@ -3,24 +3,16 @@ import UIKit
 final class DavizinBottomNavView: UIView {
     var onModes: (() -> Void)?
     var onProfile: (() -> Void)?
-    var onKexploit: (() -> Void)?
-    var onVPN: (() -> Void)?
     var onHelp: (() -> Void)?
 
     private let modesButton = UIButton(type: .system)
     private let profileButton = UIButton(type: .system)
-    private let kexploitButton = UIButton(type: .system)
-    private let vpnButton = UIButton(type: .system)
     private let helpButton = UIButton(type: .system)
     private let modesLabel = UILabel()
     private let profileLabel = UILabel()
-    private let kexploitLabel = UILabel()
-    private let vpnLabel = UILabel()
     private let helpLabel = UILabel()
     private let modesIndicator = UIView()
     private let profileIndicator = UIView()
-    private let kexploitIndicator = UIView()
-    private let vpnIndicator = UIView()
     private let helpIndicator = UIView()
 
     override init(frame: CGRect) {
@@ -38,24 +30,18 @@ final class DavizinBottomNavView: UIView {
         let normalColor = AppTheme.secondaryText
         modesButton.tintColor = item == .modes ? selectedColor : normalColor
         profileButton.tintColor = item == .profile ? selectedColor : normalColor
-        kexploitButton.tintColor = item == .kexploit ? selectedColor : normalColor
-        vpnButton.tintColor = item == .vpn ? selectedColor : normalColor
         helpButton.tintColor = item == .help ? selectedColor : normalColor
         modesLabel.textColor = item == .modes ? selectedColor : normalColor
         profileLabel.textColor = item == .profile ? selectedColor : normalColor
-        kexploitLabel.textColor = item == .kexploit ? selectedColor : normalColor
-        vpnLabel.textColor = item == .vpn ? selectedColor : normalColor
         helpLabel.textColor = item == .help ? selectedColor : normalColor
         UIView.animate(withDuration: AppTheme.durationPopover) {
             self.modesIndicator.alpha = item == .modes ? 1.0 : 0.0
             self.profileIndicator.alpha = item == .profile ? 1.0 : 0.0
-            self.kexploitIndicator.alpha = item == .kexploit ? 1.0 : 0.0
-            self.vpnIndicator.alpha = item == .vpn ? 1.0 : 0.0
             self.helpIndicator.alpha = item == .help ? 1.0 : 0.0
         }
     }
 
-    enum Item { case modes, profile, kexploit, vpn, help }
+    enum Item { case modes, profile, help }
 
     private func configure() {
         translatesAutoresizingMaskIntoConstraints = false
@@ -69,17 +55,13 @@ final class DavizinBottomNavView: UIView {
         layer.shadowRadius = 14
         layer.shadowOffset = CGSize(width: 0, height: 6)
 
-        configureButton(modesButton, image: "square.grid.2x2.fill", label: modesLabel, text: "MODOS", accessibility: "Modos", action: #selector(modesTapped))
+        configureButton(modesButton, image: "square.grid.2x2.fill", label: modesLabel, text: "INICIO", accessibility: "Inicio", action: #selector(modesTapped))
         configureButton(profileButton, image: "person.crop.circle.fill", label: profileLabel, text: "PERFIL", accessibility: "Perfil", action: #selector(profileTapped))
-        configureButton(kexploitButton, image: "cpu.fill", label: kexploitLabel, text: "iOS 26", accessibility: "iOS 26", action: #selector(kexploitTapped))
-        configureButton(vpnButton, image: "iphone", label: vpnLabel, text: "iOS 27", accessibility: "iOS 27", action: #selector(vpnTapped))
         configureButton(helpButton, image: "questionmark.circle.fill", label: helpLabel, text: "AYUDA", accessibility: "Centro de ayuda", action: #selector(helpTapped))
 
         let stack = UIStackView(arrangedSubviews: [
             makeItem(button: modesButton, label: modesLabel, indicator: modesIndicator),
             makeItem(button: profileButton, label: profileLabel, indicator: profileIndicator),
-            makeItem(button: kexploitButton, label: kexploitLabel, indicator: kexploitIndicator),
-            makeItem(button: vpnButton, label: vpnLabel, indicator: vpnIndicator),
             makeItem(button: helpButton, label: helpLabel, indicator: helpIndicator)
         ])
         stack.axis = .horizontal
@@ -132,7 +114,5 @@ final class DavizinBottomNavView: UIView {
 
     @objc private func modesTapped() { onModes?() }
     @objc private func profileTapped() { onProfile?() }
-    @objc private func kexploitTapped() { onKexploit?() }
-    @objc private func vpnTapped() { onVPN?() }
     @objc private func helpTapped() { onHelp?() }
 }

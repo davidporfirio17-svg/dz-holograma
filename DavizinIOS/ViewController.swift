@@ -13,7 +13,9 @@ final class ViewController: UIViewController {
     var onKexploitExploit: (() -> Void)?
     var onKexploitInject: ((DavizinGame, DavizinMode) -> Void)?
     var onKexploitOpenGame: ((DavizinGame) -> Void)?
+    var onVersionSelected: ((VersionSelectorView.IOSPath) -> Void)?
 
+    private(set) var selectedIOSPath: VersionSelectorView.IOSPath?
     private let animatedBackgroundView = DavizinAnimatedBackgroundView()
     private let headerView = DavizinHeaderView()
     private let contentContainerView = UIView()
@@ -37,7 +39,7 @@ final class ViewController: UIViewController {
     private var stageBeforeHelp: DavizinScreenStage = .modeSelection
     private var operationView: OperationView?
     private var kexploitView: NyxelKexploitView?
-    private var stageBeforeKexploit: DavizinScreenStage = .modeSelection
+    private var versionSelectorView: VersionSelectorView?
 
     override var preferredStatusBarStyle: UIStatusBarStyle {
         traitCollection.userInterfaceStyle == .light ? .darkContent : .lightContent
@@ -59,6 +61,10 @@ final class ViewController: UIViewController {
     }
 
     // MARK: - Public UI controls
+
+    func showVersionSelectorScreen() {
+        showVersionSelector(animated: true)
+    }
 
     func showGameSelectionScreen() {
         showGameSelection(animated: true)
@@ -302,16 +308,15 @@ final class ViewController: UIViewController {
         view.addSubview(contentContainerView)
 
         bottomNavView.onModes = { [weak self] in
-            self?.showModeSelection(animated: true)
+            guard let self else { return }
+            if self.selectedIOSPath == .ios26 {
+                self.showKexploit(animated: true)
+            } else {
+                self.showGameSelection(animated: true)
+            }
         }
         bottomNavView.onProfile = { [weak self] in
             self?.showProfile(animated: true)
-        }
-        bottomNavView.onKexploit = { [weak self] in
-            self?.showKexploit(animated: true)
-        }
-        bottomNavView.onVPN = { [weak self] in
-            self?.showVPN(animated: true)
         }
         bottomNavView.onHelp = { [weak self] in
             self?.showHelp(animated: true)
@@ -447,6 +452,22 @@ final class ViewController: UIViewController {
         }
     }
 
+    private func showVersionSelector(animated: Bool) {
+        currentStage = .versionSelector
+        selectedIOSPath = nil
+        animatedBackgroundView.isHidden = false
+        animatedBackgroundView.startAnimating()
+        setBottomNavigation(visible: false)
+        headerView.title = "Nyxel External"
+        headerView.showsBackButton = true
+        headerView.showsAvatarButton = false
+
+        let screen = VersionSelectorView()
+        screen.delegate = self
+        versionSelectorView = screen
+        display(screen, animated: animated)
+    }
+
     private func showGameSelection(animated: Bool) {
         currentStage = .gameSelection
         animatedBackgroundView.isHidden = false
@@ -510,23 +531,10 @@ final class ViewController: UIViewController {
         display(screen, animated: animated)
     }
 
-    private func showVPN(animated: Bool) {
-        stageBeforeProfile = currentStage == .profile ? stageBeforeProfile : currentStage
-        currentStage = .profile
-        setBottomNavigation(visible: true, selected: .vpn)
-        headerView.title = "iOS 27"
-        headerView.showsBackButton = true
-        headerView.showsAvatarButton = false
-        let screen = NyxelVPNView()
-        screen.setAccount(key: activeKey, remainingSeconds: activeRemainingSeconds)
-        display(screen, animated: animated)
-    }
-
     private func showKexploit(animated: Bool) {
-        stageBeforeKexploit = (currentStage == .kexploit) ? stageBeforeKexploit : currentStage
         currentStage = .kexploit
-        setBottomNavigation(visible: true, selected: .kexploit)
-        headerView.title = "iOS 26"
+        setBottomNavigation(visible: true, selected: .modes)
+        headerView.title = "iOS 26 · Kexploit"
         headerView.showsBackButton = true
         headerView.showsAvatarButton = false
         let screen = NyxelKexploitView()
@@ -696,7 +704,7 @@ final class ViewController: UIViewController {
                 guard let self = self, self.currentStage == .login else { return }
                 screen.playExitAnimation {
                     guard self.currentStage == .login else { return }
-                    self.showGameSelection(animated: true)
+                    self.showVersionSelector(animated: true)
                 }
             }
         }
@@ -734,10 +742,12 @@ final class ViewController: UIViewController {
         switch currentStage {
         case .login:
             break
+        case .versionSelector:
+            showLogin(animated: true)
         case .home:
             break
         case .gameSelection:
-            showLogin(animated: true)
+            showVersionSelector(animated: true)
         case .modeSelection:
             showGameSelection(animated: true)
         case .operation:
@@ -747,24 +757,20 @@ final class ViewController: UIViewController {
             case .operation: showOperation(animated: true)
             case .modeSelection: showModeSelection(animated: true)
             case .gameSelection: showGameSelection(animated: true)
-            case .home: showGameSelection(animated: true)
+            case .kexploit: showKexploit(animated: true)
             case .help: showHelp(animated: true)
-            default: showModeSelection(animated: true)
+            default: showVersionSelector(animated: true)
             }
         case .help:
             switch stageBeforeHelp {
             case .operation: showOperation(animated: true)
             case .profile: showProfile(animated: true)
             case .modeSelection: showModeSelection(animated: true)
-            case .gameSelection, .home, .login, .help, .kexploit: showGameSelection(animated: true)
+            case .kexploit: showKexploit(animated: true)
+            default: showVersionSelector(animated: true)
             }
         case .kexploit:
-            switch stageBeforeKexploit {
-            case .operation: showOperation(animated: true)
-            case .modeSelection: showModeSelection(animated: true)
-            case .gameSelection: showGameSelection(animated: true)
-            default: showModeSelection(animated: true)
-            }
+            showVersionSelector(animated: true)
         }
     }
 }
@@ -780,7 +786,7 @@ extension ViewController: DavizinHeaderViewDelegate {
     }
 
     func headerViewDidTapAvatar(_ headerView: DavizinHeaderView) {
-        guard currentStage != .login, currentStage != .profile else { return }
+        guard currentStage != .login, currentStage != .versionSelector, currentStage != .profile else { return }
         showProfile(animated: true)
     }
 
@@ -886,5 +892,19 @@ extension ViewController: NyxelKexploitViewDelegate {
 
     func setKexploitState(_ state: NyxelKexploitView.KexploitState) {
         kexploitView?.setExploitState(state)
+    }
+}
+
+extension ViewController: VersionSelectorDelegate {
+    func versionSelector(_ view: VersionSelectorView, didSelect version: VersionSelectorView.IOSPath) {
+        selectedIOSPath = version
+        NyxelActivityLog.record("Versión seleccionada: \(version.rawValue)")
+        onVersionSelected?(version)
+        switch version {
+        case .ios26:
+            showKexploit(animated: true)
+        case .ios27:
+            showGameSelection(animated: true)
+        }
     }
 }

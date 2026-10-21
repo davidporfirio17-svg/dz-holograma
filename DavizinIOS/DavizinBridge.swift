@@ -78,6 +78,10 @@ final class DavizinBridge {
             self?.vc?.openGameFromKexploit(game)
         }
 
+        viewController.onVersionSelected = { path in
+            NSLog("[DavizinBridge] Usuario seleccionó: %@", path.rawValue)
+        }
+
         viewController.onClose = {
             // Nada - no cerramos
         }
@@ -145,7 +149,7 @@ final class DavizinBridge {
             let mode = selectedMode ?? savedModeID.flatMap { DavizinModeCatalog.mode(id: $0) }
             vc?.showCleanupRecoveryScreen(for: game, mode: mode)
         } else {
-            vc?.showGameSelectionScreen()
+            vc?.showVersionSelectorScreen()
         }
     }
 
