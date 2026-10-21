@@ -139,7 +139,14 @@ final class DavizinBridge {
     }
 
     private func continueAfterLogin() {
-        vc?.showGameSelectionScreen()
+        if NyxelCleanupFlow.hasPendingWork, let game = NyxelCleanupFlow.game {
+            selectedGame = game
+            let savedModeID = UserDefaults.standard.string(forKey: "dz_last_mode")
+            let mode = selectedMode ?? savedModeID.flatMap { DavizinModeCatalog.mode(id: $0) }
+            vc?.showCleanupRecoveryScreen(for: game, mode: mode)
+        } else {
+            vc?.showGameSelectionScreen()
+        }
     }
 
     // MARK: - Operaciones
