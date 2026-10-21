@@ -8,7 +8,7 @@ struct RootView: View {
             if appState.isAuthenticated {
                 HomeView(onContinue: {})
             } else {
-                KeyGateView()
+                KeyGateView(onSuccess: {})
             }
         }
         .animation(.easeInOut(duration: 0.4), value: appState.isAuthenticated)
