@@ -217,16 +217,17 @@ enum NyxelSupportPolicy {
             || ["24A435", "24A437"].contains(build)
     }
 
-    /// Desde iOS 26, las operaciones sobre otro contenedor deben pasar por
+    /// Desde iOS 26.1, las operaciones sobre otro contenedor deben pasar por
     /// un registro de pairing y el túnel RSD/AirLift.
+    /// iOS 26.0.x conserva el camino kexploit verificado.
     static func requiresPairingTunnel(major: Int, minor: Int, patch: Int, build: String) -> Bool {
-        major >= 26
+        major >= 27 || (major == 26 && minor >= 1)
     }
 
-    /// The bundled opa334 offset table covers iOS 17–25.x.
-    /// iOS 26+ must use the pairing/AirLift route instead.
+    /// iOS 17–26.0.x → kexploit directo (offsets verificados).
+    /// iOS 26.1+ → AirLift (kexploit race falla consistentemente).
     static func supportsKernelOffsets(major: Int, minor: Int) -> Bool {
-        major >= 17 && major <= 25
+        major >= 17 && (major < 26 || (major == 26 && minor == 0))
     }
 
     static func isSupported(major: Int, minor: Int, patch: Int, build: String) -> Bool {
