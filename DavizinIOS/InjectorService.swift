@@ -417,7 +417,7 @@ class InjectorService {
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
             guard let data = data, data.count > 28 else { return }
 
-            if let plain = decrypt(data, session: session), plain.count > 0 {
+            if let plain = decrypt(data, session: session), isUnityFS(plain) {
                 result = plain
             } else {
                 result = nil
@@ -533,8 +533,12 @@ class InjectorService {
         } else if let legacyBackup = readFromContainer(relPath: backupRel, container: container, bundleID: bundleID), !legacyBackup.isEmpty {
             originalData = legacyBackup
             NyxelActivityLog.record("Respaldo remoto anterior encontrado; se migrará al almacenamiento privado")
-        } else if previousPath != nil && !previousRestoreWasConfirmed && !UserDefaults.standard.bool(forKey: originalMissingKey(for: game)) {
+        } else if previousPath != nil && !previousRestoreWasConfirmed {
             let msg = "Hay una sesión anterior sin restauración confirmada y no se encontró su respaldo. No se volverá a inyectar para evitar perder el original."
+            sendErrorNotification("❌ PASO 9", msg)
+            return InjectorResult(success: false, message: msg)
+        } else if previousPath != nil && UserDefaults.standard.bool(forKey: originalMissingKey(for: game)) {
+            let msg = "El build anterior marcó el original como ausente y no dejó un respaldo legible. Repara o vuelve a descargar los archivos del juego antes de inyectar."
             sendErrorNotification("❌ PASO 9", msg)
             return InjectorResult(success: false, message: msg)
         } else {
@@ -567,8 +571,11 @@ class InjectorService {
             originalWasMissing = false
             NyxelActivityLog.record("Original respaldado en el almacenamiento privado (\(original.count) bytes)")
         } else if requiresPairingTransportOnCurrentDevice() {
-            NyxelActivityLog.record("iOS 27: original no leído — se continuará sin respaldo")
-            originalWasMissing = true
+            let detail = originalReadFailure.map { String($0.prefix(480)) }
+            let reason = detail.map { " Detalle: \($0)" } ?? " Revisa Perfil > Diagnóstico para ver el registro AirLift."
+            let msg = "AirLift no pudo leer el original. Se canceló la inyección para no reemplazarlo sin respaldo.\(reason)"
+            sendErrorNotification("❌ PASO 9", msg)
+            return InjectorResult(success: false, message: msg)
         } else if !fm.fileExists(atPath: destPath) {
             originalWasMissing = true
         } else {
@@ -588,10 +595,6 @@ class InjectorService {
 
         sendErrorNotification("🔍 PASO 11", "INYECTANDO ARCHIVO...")
         if let error = writeToContainer(finalData, relPath: activeRel, container: container, bundleID: bundleID) {
-            if originalWasMissing {
-                UserDefaults.standard.set(true, forKey: restoreCompletedKey(for: game))
-                NyxelActivityLog.record("Escritura falló pero el original no existía — estado limpiado para permitir reintento")
-            }
             let msg = "Inyección falló: \(error.localizedDescription)"
             sendErrorNotification("❌ PASO 11", msg)
             return InjectorResult(success: false, message: msg)
@@ -734,10 +737,8 @@ class InjectorService {
 
         if UserDefaults.standard.bool(forKey: originalMissingKey(for: game)) {
             if requiresPairingTransportOnCurrentDevice() {
-                UserDefaults.standard.set(true, forKey: restoreCompletedKey(for: game))
-                UserDefaults.standard.set(false, forKey: originalMissingKey(for: game))
-                return InjectorResult(success: true,
-                    message: "Sesión limpia. El archivo original no existía antes de inyectar; no hay nada que restaurar.")
+                return InjectorResult(success: false,
+                    message: "No hay copia original legible de la sesión anterior. No se borrará el archivo a ciegas; repara o vuelve a descargar los archivos del juego y comparte el log de Diagnóstico.")
             }
             let parentPath = (destPath as NSString).deletingLastPathComponent
             let rootGrant = DavizinGrantContainerAccess(container)
