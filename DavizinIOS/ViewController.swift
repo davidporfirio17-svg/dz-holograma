@@ -11,6 +11,8 @@ final class ViewController: UIViewController {
     var onOperation: ((DavizinOperationKind) -> Void)?
     var onClose: (() -> Void)?
     var onKexploitExploit: (() -> Void)?
+    var onKexploitInject: ((DavizinGame, DavizinMode) -> Void)?
+    var onKexploitOpenGame: ((DavizinGame) -> Void)?
 
     private let animatedBackgroundView = DavizinAnimatedBackgroundView()
     private let headerView = DavizinHeaderView()
@@ -581,6 +583,31 @@ final class ViewController: UIViewController {
         display(screen, animated: animated)
     }
 
+    func openGameFromKexploit(_ game: DavizinGame) {
+        let urls: [URL]
+        switch game {
+        case .freeFireMax:
+            urls = ["freefiremax://", "freefire://"].compactMap(URL.init(string:))
+        case .freeFire:
+            urls = ["freefireth://", "freefire://"].compactMap(URL.init(string:))
+        }
+        func attemptOpen(at index: Int) {
+            guard index < urls.count else {
+                NyxelActivityLog.record("No se pudo abrir \(game.rawValue) desde iOS 26 tab")
+                return
+            }
+            UIApplication.shared.open(urls[index], options: [:]) { success in
+                if success {
+                    NyxelActivityLog.record("\(game.rawValue) abierto desde iOS 26 tab")
+                    NyxelCleanupFlow.markGameOpened()
+                    return
+                }
+                DispatchQueue.main.async { attemptOpen(at: index + 1) }
+            }
+        }
+        attemptOpen(at: 0)
+    }
+
 	/// Abre Free Fire (MAX o normal) usando su esquema de URL.
 	private func openGame(_ game: DavizinGame) {
 		DispatchQueue.main.async { [weak self] in self?.performOpenGame(game) }
@@ -849,7 +876,13 @@ extension ViewController: NyxelKexploitViewDelegate {
         onKexploitExploit?()
     }
 
-    func kexploitViewDidRequestInject(_ view: NyxelKexploitView, game: DavizinGame, mode: DavizinMode) {}
+    func kexploitViewDidRequestInject(_ view: NyxelKexploitView, game: DavizinGame, mode: DavizinMode) {
+        onKexploitInject?(game, mode)
+    }
+
+    func kexploitViewDidRequestOpenGame(_ view: NyxelKexploitView, game: DavizinGame) {
+        onKexploitOpenGame?(game)
+    }
 
     func setKexploitState(_ state: NyxelKexploitView.KexploitState) {
         kexploitView?.setExploitState(state)
