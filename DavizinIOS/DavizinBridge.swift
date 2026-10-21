@@ -261,6 +261,32 @@ final class DavizinBridge {
                     }
                 } else if Self.airLiftRouteAvailable {
                     NyxelActivityLog.record("AirLift disponible: usando Remote Pairing/RSD para la escritura")
+                } else if sandbox_access_is_active() == 0 {
+                    NyxelActivityLog.record("Sandbox no activo, ejecutando exploit antes de inyectar...")
+                    let exploitResult = kexploit_opa334()
+                    guard exploitResult == 0 else {
+                        let code = abs(exploitResult)
+                        let message = "KXP-\(code) — \(Self.kxpDetail(code))"
+                        NyxelActivityLog.record("Exploit pre-inyección falló (\(message)); se detiene antes de MCM/bad_query")
+                        DispatchQueue.main.async {
+                            self.operationInFlight = false
+                            self.vc?.setOperationState(.failed(message))
+                        }
+                        return
+                    }
+
+                    let selfProc = proc_self()
+                    let escapeResult = sandbox_escape(selfProc)
+                    let sandboxActive = sandbox_access_is_active() != 0
+                    NyxelActivityLog.record("Exploit pre-inyección: sandbox_escape=\(escapeResult), activo=\(sandboxActive)")
+                    guard escapeResult == 0 && sandboxActive else {
+                        let message = "SBX-001 — El exploit terminó, pero el sandbox escape no quedó activo (\(escapeResult))."
+                        DispatchQueue.main.async {
+                            self.operationInFlight = false
+                            self.vc?.setOperationState(.failed(message))
+                        }
+                        return
+                    }
                 }
 
                 // Chequeo distribuido 2/N (justo antes del write real): si el
@@ -461,7 +487,16 @@ final class DavizinBridge {
             vc?.setOperationState(.failed("NYX-006 — Ya hay una operación en curso."))
             return
         }
+        if operation == .inject && NyxelCleanupFlow.hasPendingWork {
+            vc?.setOperationState(.failed("Limpia sesión sí o sí antes de volver a inyectar."))
+            return
+        }
         if operation == .clean {
+            guard NyxelCleanupFlow.stage == .needsCleaning else {
+                vc?.setOperationState(.failed("No hay una limpieza pendiente que pueda confirmarse."))
+                return
+            }
+            if let pendingGame = NyxelCleanupFlow.game { selectedGame = pendingGame }
             operationInFlight = true
             executeAuthorizedOperation(.clean)
             return
