@@ -100,6 +100,7 @@ jobs:
           BUILD_DIR=/tmp/davizin_build \
           LIBRARY_SEARCH_PATHS=/tmp/airlift \
           FRAMEWORK_SEARCH_PATHS=/tmp/airlift \
+          'OTHER_LDFLAGS=-lairlift_ffi -framework Security -framework Network -lresolv' \
           build > /tmp/build.log 2>&1
         status=$?
         set -e
