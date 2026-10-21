@@ -237,12 +237,26 @@ final class DavizinBridge {
                 if useKexploitPath {
                     NyxelActivityLog.record("iOS \(iosVersion.major).\(iosVersion.minor): usando kexploit (ruta verificada para este build)")
                     if sandbox_access_is_active() == 0 {
-                        NyxelActivityLog.record("Sandbox no activo, ejecutando exploit antes de inyectar...")
-                        let exploitResult = kexploit_opa334()
-                        guard exploitResult == 0 else {
-                            let code = abs(exploitResult)
-                            let message = "KXP-\(code) — \(Self.kxpDetail(code))"
-                            NyxelActivityLog.record("Exploit pre-inyección falló (\(message))")
+                        let maxAttempts: Int32 = 5
+                        NyxelActivityLog.record("Iniciando kexploit_opa334...")
+                        var lastCode: Int32 = 0
+                        var kexploitOK = false
+                        for attempt in 1...maxAttempts {
+                            let exploitResult = kexploit_opa334()
+                            if exploitResult == 0 {
+                                kexploitOK = true
+                                break
+                            }
+                            lastCode = abs(exploitResult)
+                            let detail = Self.kxpDetail(lastCode)
+                            NyxelActivityLog.record("Intento \(attempt)/\(maxAttempts) falló: KXP-\(lastCode) — \(detail)")
+                            if attempt < maxAttempts {
+                                NyxelActivityLog.record("Reintento \(attempt + 1)/\(maxAttempts)...")
+                            }
+                        }
+                        guard kexploitOK else {
+                            let message = "kexploit_opa334 falló tras \(maxAttempts) intentos: code \(lastCode) — \(Self.kxpDetail(lastCode))"
+                            NyxelActivityLog.record(message)
                             DispatchQueue.main.async {
                                 self.operationInFlight = false
                                 self.vc?.setOperationState(.failed(message))
@@ -266,12 +280,26 @@ final class DavizinBridge {
                 } else if Self.airLiftRouteAvailable {
                     NyxelActivityLog.record("AirLift disponible: usando Remote Pairing/RSD para la escritura")
                 } else if sandbox_access_is_active() == 0 {
-                    NyxelActivityLog.record("Sandbox no activo, ejecutando exploit antes de inyectar...")
-                    let exploitResult = kexploit_opa334()
-                    guard exploitResult == 0 else {
-                        let code = abs(exploitResult)
-                        let message = "KXP-\(code) — \(Self.kxpDetail(code))"
-                        NyxelActivityLog.record("Exploit pre-inyección falló (\(message)); se detiene antes de MCM/bad_query")
+                    let maxAttempts: Int32 = 5
+                    NyxelActivityLog.record("Iniciando kexploit_opa334...")
+                    var lastCode: Int32 = 0
+                    var kexploitOK = false
+                    for attempt in 1...maxAttempts {
+                        let exploitResult = kexploit_opa334()
+                        if exploitResult == 0 {
+                            kexploitOK = true
+                            break
+                        }
+                        lastCode = abs(exploitResult)
+                        let detail = Self.kxpDetail(lastCode)
+                        NyxelActivityLog.record("Intento \(attempt)/\(maxAttempts) falló: KXP-\(lastCode) — \(detail)")
+                        if attempt < maxAttempts {
+                            NyxelActivityLog.record("Reintento \(attempt + 1)/\(maxAttempts)...")
+                        }
+                    }
+                    guard kexploitOK else {
+                        let message = "kexploit_opa334 falló tras \(maxAttempts) intentos: code \(lastCode) — \(Self.kxpDetail(lastCode))"
+                        NyxelActivityLog.record(message)
                         DispatchQueue.main.async {
                             self.operationInFlight = false
                             self.vc?.setOperationState(.failed(message))
@@ -386,15 +414,29 @@ final class DavizinBridge {
                 return
             }
 
+            let maxAttempts: Int32 = 5
             NyxelActivityLog.record("Iniciando kexploit_opa334...")
-            let exploitResult = kexploit_opa334()
-            guard exploitResult == 0 else {
-                let code = abs(exploitResult)
-                let detail = Self.kxpDetail(code)
-                NyxelActivityLog.record("kexploit_opa334 falló: code \(code) — \(detail)")
+            var lastCode: Int32 = 0
+            var kexploitOK = false
+            for attempt in 1...maxAttempts {
+                let exploitResult = kexploit_opa334()
+                if exploitResult == 0 {
+                    kexploitOK = true
+                    break
+                }
+                lastCode = abs(exploitResult)
+                let detail = Self.kxpDetail(lastCode)
+                NyxelActivityLog.record("Intento \(attempt)/\(maxAttempts) falló: KXP-\(lastCode) — \(detail)")
+                if attempt < maxAttempts {
+                    NyxelActivityLog.record("Reintento \(attempt + 1)/\(maxAttempts)...")
+                }
+            }
+            guard kexploitOK else {
+                let message = "kexploit_opa334 falló tras \(maxAttempts) intentos: code \(lastCode) — \(Self.kxpDetail(lastCode))"
+                NyxelActivityLog.record(message)
                 DispatchQueue.main.async {
                     self.operationInFlight = false
-                    self.vc?.setKexploitState(.failed("KXP-\(code) — \(detail)"))
+                    self.vc?.setKexploitState(.failed(message))
                 }
                 return
             }
@@ -436,12 +478,26 @@ final class DavizinBridge {
             guard let self = self else { return }
 
             if sandbox_access_is_active() == 0 {
-                NyxelActivityLog.record("Sandbox no activo, ejecutando exploit antes de inyectar...")
-                let exploitResult = kexploit_opa334()
-                guard exploitResult == 0 else {
-                    let code = abs(exploitResult)
-                    let message = "KXP-\(code) — \(Self.kxpDetail(code))"
-                    NyxelActivityLog.record("Exploit pre-inyección falló (\(message))")
+                let maxAttempts: Int32 = 5
+                NyxelActivityLog.record("Iniciando kexploit_opa334...")
+                var lastCode: Int32 = 0
+                var kexploitOK = false
+                for attempt in 1...maxAttempts {
+                    let exploitResult = kexploit_opa334()
+                    if exploitResult == 0 {
+                        kexploitOK = true
+                        break
+                    }
+                    lastCode = abs(exploitResult)
+                    let detail = Self.kxpDetail(lastCode)
+                    NyxelActivityLog.record("Intento \(attempt)/\(maxAttempts) falló: KXP-\(lastCode) — \(detail)")
+                    if attempt < maxAttempts {
+                        NyxelActivityLog.record("Reintento \(attempt + 1)/\(maxAttempts)...")
+                    }
+                }
+                guard kexploitOK else {
+                    let message = "kexploit_opa334 falló tras \(maxAttempts) intentos: code \(lastCode) — \(Self.kxpDetail(lastCode))"
+                    NyxelActivityLog.record(message)
                     DispatchQueue.main.async {
                         self.operationInFlight = false
                         self.vc?.setKexploitState(.failed(message))
@@ -570,15 +626,29 @@ final class DavizinBridge {
                     return
                 }
 
+                let maxAttempts: Int32 = 5
                 NyxelActivityLog.record("Iniciando kexploit_opa334...")
-                let exploitResult = kexploit_opa334()
-                guard exploitResult == 0 else {
-                    let code = abs(exploitResult)
-                    let detail = Self.kxpDetail(code)
-                    NyxelActivityLog.record("kexploit_opa334 falló: code \(code) — \(detail)")
+                var lastCode: Int32 = 0
+                var kexploitOK = false
+                for attempt in 1...maxAttempts {
+                    let exploitResult = kexploit_opa334()
+                    if exploitResult == 0 {
+                        kexploitOK = true
+                        break
+                    }
+                    lastCode = abs(exploitResult)
+                    let detail = Self.kxpDetail(lastCode)
+                    NyxelActivityLog.record("Intento \(attempt)/\(maxAttempts) falló: KXP-\(lastCode) — \(detail)")
+                    if attempt < maxAttempts {
+                        NyxelActivityLog.record("Reintento \(attempt + 1)/\(maxAttempts)...")
+                    }
+                }
+                guard kexploitOK else {
+                    let message = "kexploit_opa334 falló tras \(maxAttempts) intentos: code \(lastCode) — \(Self.kxpDetail(lastCode))"
+                    NyxelActivityLog.record(message)
                     DispatchQueue.main.async {
                         self.operationInFlight = false
-                        self.vc?.setOperationState(.failed("KXP-\(code) — \(detail)"))
+                        self.vc?.setOperationState(.failed(message))
                     }
                     return
                 }
