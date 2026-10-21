@@ -419,7 +419,7 @@ final class ViewController: UIViewController {
 						message = "✅ Sistema listo. Pairing detectado — se usará AirLift para operar."
 						messageColor = AppTheme.success
 					} else if kernelOffsetsAvailable {
-						message = "⚠️ Sin pairing. Se usará kexploit como ruta alternativa. Para mejor fiabilidad, agrega un pairing desde Ajustes."
+						message = "⚠️ Sin pairing. Importa un pairing desde el tab iOS 27 para operar de forma fiable."
 						messageColor = AppTheme.accentWarm
 					} else {
 						message = "⚠️ MCM encontró el contenedor; no hay una ruta de escritura validada para este build."
@@ -914,11 +914,7 @@ extension ViewController: VersionSelectorDelegate {
         NyxelActivityLog.record("Versión seleccionada: \(version.rawValue)")
         switch version {
         case .ios26:
-            if NixelAirLiftFileChannel.isAvailable {
-                bottomNavView.setMode(.ios27)
-            } else {
-                bottomNavView.setMode(.ios26)
-            }
+            bottomNavView.setMode(.ios27)
         case .ios27:
             bottomNavView.setMode(.ios27)
         }
