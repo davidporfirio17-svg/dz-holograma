@@ -10,6 +10,7 @@ final class ViewController: UIViewController {
     var onModeSelected: ((DavizinMode) -> Void)?
     var onOperation: ((DavizinOperationKind) -> Void)?
     var onClose: (() -> Void)?
+    var onKexploitExploit: (() -> Void)?
 
     private let animatedBackgroundView = DavizinAnimatedBackgroundView()
     private let headerView = DavizinHeaderView()
@@ -33,6 +34,8 @@ final class ViewController: UIViewController {
     private var stageBeforeProfile: DavizinScreenStage = .modeSelection
     private var stageBeforeHelp: DavizinScreenStage = .modeSelection
     private var operationView: OperationView?
+    private var kexploitView: NyxelKexploitView?
+    private var stageBeforeKexploit: DavizinScreenStage = .modeSelection
 
     override var preferredStatusBarStyle: UIStatusBarStyle {
         traitCollection.userInterfaceStyle == .light ? .darkContent : .lightContent
@@ -302,6 +305,9 @@ final class ViewController: UIViewController {
         bottomNavView.onProfile = { [weak self] in
             self?.showProfile(animated: true)
         }
+        bottomNavView.onKexploit = { [weak self] in
+            self?.showKexploit(animated: true)
+        }
         bottomNavView.onVPN = { [weak self] in
             self?.showVPN(animated: true)
         }
@@ -514,6 +520,20 @@ final class ViewController: UIViewController {
         display(screen, animated: animated)
     }
 
+    private func showKexploit(animated: Bool) {
+        stageBeforeKexploit = (currentStage == .kexploit) ? stageBeforeKexploit : currentStage
+        currentStage = .kexploit
+        setBottomNavigation(visible: true, selected: .kexploit)
+        headerView.title = "iOS 26"
+        headerView.showsBackButton = true
+        headerView.showsAvatarButton = false
+        let screen = NyxelKexploitView()
+        screen.delegate = self
+        screen.setAccount(key: activeKey, remainingSeconds: activeRemainingSeconds)
+        kexploitView = screen
+        display(screen, animated: animated)
+    }
+
     /// Perfil: accesible desde el avatar del header en cualquier pantalla (excepto login).
     private func showProfile(animated: Bool) {
         stageBeforeProfile = currentStage == .profile ? stageBeforeProfile : currentStage
@@ -709,7 +729,14 @@ final class ViewController: UIViewController {
             case .operation: showOperation(animated: true)
             case .profile: showProfile(animated: true)
             case .modeSelection: showModeSelection(animated: true)
-            case .gameSelection, .home, .login, .help: showGameSelection(animated: true)
+            case .gameSelection, .home, .login, .help, .kexploit: showGameSelection(animated: true)
+            }
+        case .kexploit:
+            switch stageBeforeKexploit {
+            case .operation: showOperation(animated: true)
+            case .modeSelection: showModeSelection(animated: true)
+            case .gameSelection: showGameSelection(animated: true)
+            default: showModeSelection(animated: true)
             }
         }
     }
@@ -814,5 +841,17 @@ extension ViewController: OperationViewDelegate {
         onOperation?(operation)
         guard simulateUIStates else { return }
         simulateOperation(operation)
+    }
+}
+
+extension ViewController: NyxelKexploitViewDelegate {
+    func kexploitViewDidRequestExploit(_ view: NyxelKexploitView) {
+        onKexploitExploit?()
+    }
+
+    func kexploitViewDidRequestInject(_ view: NyxelKexploitView, game: DavizinGame, mode: DavizinMode) {}
+
+    func setKexploitState(_ state: NyxelKexploitView.KexploitState) {
+        kexploitView?.setExploitState(state)
     }
 }

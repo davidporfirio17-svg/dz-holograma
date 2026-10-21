@@ -66,6 +66,10 @@ final class DavizinBridge {
             self?.handleOperation(operation)
         }
 
+        viewController.onKexploitExploit = { [weak self] in
+            self?.handleKexploitFromTab()
+        }
+
         viewController.onClose = {
             // Nada - no cerramos
         }
@@ -341,6 +345,71 @@ final class DavizinBridge {
                 self.vc?.setOperationState(ok ? .succeeded(result.message) : .failed("La inyección se realizó, pero no se pudo confirmar el consumo del modo. No vuelvas a intentarlo hasta revisar la conexión."))
             }
         }.resume()
+    }
+
+    private func handleKexploitFromTab() {
+        guard !operationInFlight else {
+            vc?.setKexploitState(.failed("NYX-006 — Ya hay una operación en curso."))
+            return
+        }
+        operationInFlight = true
+        vc?.setKexploitState(.running(attempt: 1, maxAttempts: 5))
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            let maxAttempts = 5
+            var lastCode: Int32 = 0
+            var exploitSucceeded = false
+
+            for attempt in 1...maxAttempts {
+                DispatchQueue.main.async {
+                    self.vc?.setKexploitState(.running(attempt: attempt, maxAttempts: maxAttempts))
+                }
+                if attempt > 1 {
+                    NyxelActivityLog.record("Reintento kexploit \(attempt)/\(maxAttempts)...")
+                    Thread.sleep(forTimeInterval: 1.0)
+                }
+
+                let exploitResult = kexploit_opa334()
+                if exploitResult == 0 {
+                    exploitSucceeded = true
+                    NyxelActivityLog.record("kexploit exitoso en intento \(attempt)")
+                    break
+                }
+
+                lastCode = abs(exploitResult)
+                NyxelActivityLog.record("kexploit intento \(attempt)/\(maxAttempts) falló: KXP-\(lastCode) — \(Self.kxpDetail(lastCode))")
+
+                let retryable = (lastCode >= 7100 && lastCode < 7200) || lastCode == 11
+                if !retryable { break }
+            }
+
+            guard exploitSucceeded else {
+                let detail = Self.kxpDetail(lastCode)
+                NyxelActivityLog.record("kexploit falló tras \(maxAttempts) intentos: KXP-\(lastCode) — \(detail)")
+                DispatchQueue.main.async {
+                    self.operationInFlight = false
+                    self.vc?.setKexploitState(.failed("KXP-\(lastCode) — \(detail)"))
+                }
+                return
+            }
+
+            NyxelActivityLog.record("kexploit exitoso, ejecutando sandbox_escape...")
+            let selfProc = proc_self()
+            let escapeResult = sandbox_escape(selfProc)
+            let active = sandbox_access_is_active() != 0
+            NyxelActivityLog.record("sandbox_escape return=\(escapeResult), activo: \(active)")
+
+            DispatchQueue.main.async {
+                self.operationInFlight = false
+                if active {
+                    self.vc?.setKexploitState(.success)
+                    DavizinToastCenter.shared.show(title: "Entorno preparado", subtitle: "Sandbox activo. Ve a MODOS para inyectar.", kind: .success)
+                } else {
+                    self.vc?.setKexploitState(.failed("SBX-001 — Sandbox escape no verificado."))
+                }
+            }
+        }
     }
 
     private func handleOperation(_ operation: DavizinOperationKind) {
