@@ -308,15 +308,16 @@ final class ViewController: UIViewController {
         view.addSubview(contentContainerView)
 
         bottomNavView.onModes = { [weak self] in
-            guard let self else { return }
-            if self.selectedIOSPath == .ios26 {
-                self.showKexploit(animated: true)
-            } else {
-                self.showGameSelection(animated: true)
-            }
+            self?.showGameSelection(animated: true)
         }
         bottomNavView.onProfile = { [weak self] in
             self?.showProfile(animated: true)
+        }
+        bottomNavView.onKexploit = { [weak self] in
+            self?.showKexploit(animated: true)
+        }
+        bottomNavView.onVPN = { [weak self] in
+            self?.showVPN(animated: true)
         }
         bottomNavView.onHelp = { [weak self] in
             self?.showHelp(animated: true)
@@ -533,7 +534,7 @@ final class ViewController: UIViewController {
 
     private func showKexploit(animated: Bool) {
         currentStage = .kexploit
-        setBottomNavigation(visible: true, selected: .modes)
+        setBottomNavigation(visible: true, selected: .kexploit)
         headerView.title = "iOS 26 · Kexploit"
         headerView.showsBackButton = true
         headerView.showsAvatarButton = false
@@ -541,6 +542,18 @@ final class ViewController: UIViewController {
         screen.delegate = self
         screen.setAccount(key: activeKey, remainingSeconds: activeRemainingSeconds)
         kexploitView = screen
+        display(screen, animated: animated)
+    }
+
+    private func showVPN(animated: Bool) {
+        stageBeforeProfile = currentStage == .profile ? stageBeforeProfile : currentStage
+        currentStage = .profile
+        setBottomNavigation(visible: true, selected: .vpn)
+        headerView.title = "iOS 27"
+        headerView.showsBackButton = true
+        headerView.showsAvatarButton = false
+        let screen = NyxelVPNView()
+        screen.setAccount(key: activeKey, remainingSeconds: activeRemainingSeconds)
         display(screen, animated: animated)
     }
 
@@ -899,6 +912,12 @@ extension ViewController: VersionSelectorDelegate {
     func versionSelector(_ view: VersionSelectorView, didSelect version: VersionSelectorView.IOSPath) {
         selectedIOSPath = version
         NyxelActivityLog.record("Versión seleccionada: \(version.rawValue)")
+        switch version {
+        case .ios26:
+            bottomNavView.setMode(.ios26)
+        case .ios27:
+            bottomNavView.setMode(.ios27)
+        }
         onVersionSelected?(version)
         switch version {
         case .ios26:
