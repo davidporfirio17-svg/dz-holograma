@@ -10,12 +10,7 @@ final class ViewController: UIViewController {
     var onModeSelected: ((DavizinMode) -> Void)?
     var onOperation: ((DavizinOperationKind) -> Void)?
     var onClose: (() -> Void)?
-    var onKexploitExploit: (() -> Void)?
-    var onKexploitInject: ((DavizinGame, DavizinMode) -> Void)?
-    var onKexploitOpenGame: ((DavizinGame) -> Void)?
-    var onVersionSelected: ((VersionSelectorView.IOSPath) -> Void)?
 
-    private(set) var selectedIOSPath: VersionSelectorView.IOSPath?
     private let animatedBackgroundView = DavizinAnimatedBackgroundView()
     private let headerView = DavizinHeaderView()
     private let contentContainerView = UIView()
@@ -38,8 +33,6 @@ final class ViewController: UIViewController {
     private var stageBeforeProfile: DavizinScreenStage = .modeSelection
     private var stageBeforeHelp: DavizinScreenStage = .modeSelection
     private var operationView: OperationView?
-    private var kexploitView: NyxelKexploitView?
-    private var versionSelectorView: VersionSelectorView?
 
     override var preferredStatusBarStyle: UIStatusBarStyle {
         traitCollection.userInterfaceStyle == .light ? .darkContent : .lightContent
@@ -61,10 +54,6 @@ final class ViewController: UIViewController {
     }
 
     // MARK: - Public UI controls
-
-    func showVersionSelectorScreen() {
-        showVersionSelector(animated: true)
-    }
 
     func showGameSelectionScreen() {
         showGameSelection(animated: true)
@@ -275,12 +264,16 @@ final class ViewController: UIViewController {
     @objc private func appDidEnterBackground() { backgroundedAt = Date() }
 
     @objc private func appWillEnterForeground() {
+        NyxelCleanupFlow.markReturnedToNyxel()
         if let backgroundedAt, Date().timeIntervalSince(backgroundedAt) >= inactivityLockInterval {
             activeKey = nil
             activeRemainingSeconds = 0
             NyxelActivityLog.record("Sesión bloqueada por inactividad")
             showLogin(animated: true)
             return
+        }
+        if NyxelCleanupFlow.hasPendingWork, let game = NyxelCleanupFlow.game {
+            showCleanupRecoveryScreen(for: game)
         }
     }
 
@@ -403,9 +396,7 @@ final class ViewController: UIViewController {
 						major: version.majorVersion,
 						minor: version.minorVersion
 					)
-					let airLiftAvailable = NixelAirLiftFileChannel.isAvailable
-					let usesAirLift = pairingRequired || (kernelOffsetsAvailable && airLiftAvailable)
-					let headerColor: UIColor = usesAirLift ? AppTheme.success : AppTheme.accentWarm
+					let headerColor: UIColor = pairingRequired ? AppTheme.success : AppTheme.accentWarm
 					self.headerView.setSystemCompatibility(
 						"iOS/iPadOS \(NyxelSupportPolicy.currentSystemDescription) • Contenedor detectado",
 						color: headerColor
@@ -415,11 +406,8 @@ final class ViewController: UIViewController {
 					if pairingRequired {
 						message = "✅ Sistema listo. iOS 27 usa pairing/AirLift para operar — todo configurado."
 						messageColor = AppTheme.success
-					} else if kernelOffsetsAvailable && airLiftAvailable {
-						message = "✅ Sistema listo. Pairing detectado — se usará AirLift para operar."
-						messageColor = AppTheme.success
 					} else if kernelOffsetsAvailable {
-						message = "⚠️ Sin pairing. Importa un pairing desde el tab iOS 27 para operar de forma fiable."
+						message = "⚠️ MCM encontró el contenedor; eso no confirma permiso de escritura. La ruta depende de que kernel y sandbox estén activos."
 						messageColor = AppTheme.accentWarm
 					} else {
 						message = "⚠️ MCM encontró el contenedor; no hay una ruta de escritura validada para este build."
@@ -453,22 +441,6 @@ final class ViewController: UIViewController {
 				}
             }
         }
-    }
-
-    private func showVersionSelector(animated: Bool) {
-        currentStage = .versionSelector
-        selectedIOSPath = nil
-        animatedBackgroundView.isHidden = false
-        animatedBackgroundView.startAnimating()
-        setBottomNavigation(visible: false)
-        headerView.title = "Nyxel External"
-        headerView.showsBackButton = true
-        headerView.showsAvatarButton = false
-
-        let screen = VersionSelectorView()
-        screen.delegate = self
-        versionSelectorView = screen
-        display(screen, animated: animated)
     }
 
     private func showGameSelection(animated: Bool) {
@@ -532,19 +504,9 @@ final class ViewController: UIViewController {
         }
         operationView = screen
         display(screen, animated: animated)
-    }
-
-    private func showKexploit(animated: Bool) {
-        currentStage = .kexploit
-        setBottomNavigation(visible: true, selected: .modes)
-        headerView.title = "iOS 26 · Kexploit"
-        headerView.showsBackButton = true
-        headerView.showsAvatarButton = false
-        let screen = NyxelKexploitView()
-        screen.delegate = self
-        screen.setAccount(key: activeKey, remainingSeconds: activeRemainingSeconds)
-        kexploitView = screen
-        display(screen, animated: animated)
+        if NyxelCleanupFlow.hasPendingWork {
+            screen.applyCleanupStage(NyxelCleanupFlow.stage)
+        }
     }
 
     private func showVPN(animated: Bool) {
@@ -606,34 +568,23 @@ final class ViewController: UIViewController {
         display(screen, animated: animated)
     }
 
-    func openGameFromKexploit(_ game: DavizinGame) {
-        let urls: [URL]
-        switch game {
-        case .freeFireMax:
-            urls = ["freefiremax://", "freefire://"].compactMap(URL.init(string:))
-        case .freeFire:
-            urls = ["freefireth://", "freefire://"].compactMap(URL.init(string:))
-        }
-        func attemptOpen(at index: Int) {
-            guard index < urls.count else {
-                NyxelActivityLog.record("No se pudo abrir \(game.rawValue) desde iOS 26 tab")
-                return
-            }
-            UIApplication.shared.open(urls[index], options: [:]) { success in
-                if success {
-                    NyxelActivityLog.record("\(game.rawValue) abierto desde iOS 26 tab")
-                    NyxelCleanupFlow.markGameOpened()
-                    return
-                }
-                DispatchQueue.main.async { attemptOpen(at: index + 1) }
-            }
-        }
-        attemptOpen(at: 0)
-    }
-
 	/// Abre Free Fire (MAX o normal) usando su esquema de URL.
 	private func openGame(_ game: DavizinGame) {
-		DispatchQueue.main.async { [weak self] in self?.performOpenGame(game) }
+		let beginOpening = { [weak self] in
+			DispatchQueue.main.async { self?.performOpenGame(game) }
+		}
+		if NyxelCleanupFlow.stage == .readyToOpen {
+			NyxelCleanupFlow.requestReminderPermission { [weak self] allowed in
+					guard !allowed else { beginOpening(); return }
+					DispatchQueue.main.async {
+						self?.showNotice("Activa las notificaciones de Nyxel si quieres recibir el recordatorio. Si no, vuelve manualmente después de 5 segundos y pulsa LIMPIAR SESIÓN SÍ O SÍ.") {
+							beginOpening()
+						}
+					}
+			}
+		} else {
+			beginOpening()
+		}
 	}
 
 	private func performOpenGame(_ game: DavizinGame) {
@@ -666,9 +617,20 @@ final class ViewController: UIViewController {
 
 				UIApplication.shared.open(urls[index], options: [:]) { success in
 					if success {
+						let completingCycle = NyxelCleanupFlow.stage == .readyToReopen
+						NyxelCleanupFlow.markGameOpened()
 						NyxelActivityLog.record("\(game.rawValue) abierto")
 						DispatchQueue.main.async {
-							self.operationView?.showGameOpenResult(success: true)
+							if completingCycle {
+								if self.activeKey != nil && self.activeRemainingSeconds > 0 {
+									self.showOperation(animated: false)
+								} else {
+									self.showLogin(animated: true)
+								}
+							} else {
+								self.operationView?.showGameOpenResult(success: true)
+								self.operationView?.applyCleanupStage(NyxelCleanupFlow.stage)
+							}
 						}
 						return
 					}
@@ -719,7 +681,7 @@ final class ViewController: UIViewController {
                 guard let self = self, self.currentStage == .login else { return }
                 screen.playExitAnimation {
                     guard self.currentStage == .login else { return }
-                    self.showVersionSelector(animated: true)
+                    self.showGameSelection(animated: true)
                 }
             }
         }
@@ -757,12 +719,10 @@ final class ViewController: UIViewController {
         switch currentStage {
         case .login:
             break
-        case .versionSelector:
-            showLogin(animated: true)
         case .home:
             break
         case .gameSelection:
-            showVersionSelector(animated: true)
+            showLogin(animated: true)
         case .modeSelection:
             showGameSelection(animated: true)
         case .operation:
@@ -772,18 +732,17 @@ final class ViewController: UIViewController {
             case .operation: showOperation(animated: true)
             case .modeSelection: showModeSelection(animated: true)
             case .gameSelection: showGameSelection(animated: true)
+            case .home: showGameSelection(animated: true)
             case .help: showHelp(animated: true)
-            default: showGameSelection(animated: true)
+            default: showModeSelection(animated: true)
             }
         case .help:
             switch stageBeforeHelp {
             case .operation: showOperation(animated: true)
             case .profile: showProfile(animated: true)
             case .modeSelection: showModeSelection(animated: true)
-            default: showGameSelection(animated: true)
+            case .gameSelection, .home, .login, .help: showGameSelection(animated: true)
             }
-        case .kexploit:
-            showGameSelection(animated: true)
         }
     }
 }
@@ -799,7 +758,7 @@ extension ViewController: DavizinHeaderViewDelegate {
     }
 
     func headerViewDidTapAvatar(_ headerView: DavizinHeaderView) {
-        guard currentStage != .login, currentStage != .versionSelector, currentStage != .profile else { return }
+        guard currentStage != .login, currentStage != .profile else { return }
         showProfile(animated: true)
     }
 
@@ -887,38 +846,5 @@ extension ViewController: OperationViewDelegate {
         onOperation?(operation)
         guard simulateUIStates else { return }
         simulateOperation(operation)
-    }
-}
-
-extension ViewController: NyxelKexploitViewDelegate {
-    func kexploitViewDidRequestExploit(_ view: NyxelKexploitView) {
-        onKexploitExploit?()
-    }
-
-    func kexploitViewDidRequestInject(_ view: NyxelKexploitView, game: DavizinGame, mode: DavizinMode) {
-        onKexploitInject?(game, mode)
-    }
-
-    func kexploitViewDidRequestOpenGame(_ view: NyxelKexploitView, game: DavizinGame) {
-        onKexploitOpenGame?(game)
-    }
-
-    func setKexploitState(_ state: NyxelKexploitView.KexploitState) {
-        kexploitView?.setExploitState(state)
-    }
-}
-
-extension ViewController: VersionSelectorDelegate {
-    func versionSelector(_ view: VersionSelectorView, didSelect version: VersionSelectorView.IOSPath) {
-        selectedIOSPath = version
-        NyxelActivityLog.record("Versión seleccionada: \(version.rawValue)")
-        switch version {
-        case .ios26:
-            bottomNavView.setMode(.ios27)
-        case .ios27:
-            bottomNavView.setMode(.ios27)
-        }
-        onVersionSelected?(version)
-        showGameSelection(animated: true)
     }
 }

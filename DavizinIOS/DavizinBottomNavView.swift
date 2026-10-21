@@ -6,22 +6,14 @@ final class DavizinBottomNavView: UIView {
     var onVPN: (() -> Void)?
     var onHelp: (() -> Void)?
 
-    enum Item { case modes, profile, vpn, help }
-    enum NavMode { case ios26, ios27 }
-
-    private var currentMode: NavMode = .ios27
-    private var currentStack: UIStackView?
-
     private let modesButton = UIButton(type: .system)
     private let profileButton = UIButton(type: .system)
     private let vpnButton = UIButton(type: .system)
     private let helpButton = UIButton(type: .system)
-
     private let modesLabel = UILabel()
     private let profileLabel = UILabel()
     private let vpnLabel = UILabel()
     private let helpLabel = UILabel()
-
     private let modesIndicator = UIView()
     private let profileIndicator = UIView()
     private let vpnIndicator = UIView()
@@ -29,44 +21,36 @@ final class DavizinBottomNavView: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        configureBase()
-        buildStack(for: .ios27)
+        configure()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
-        configureBase()
-        buildStack(for: .ios27)
-    }
-
-    func setMode(_ mode: NavMode) {
-        guard mode != currentMode || currentStack == nil else { return }
-        currentMode = mode
-        buildStack(for: mode)
+        configure()
     }
 
     func setSelected(_ item: Item) {
         let selectedColor = AppTheme.readableAccent
         let normalColor = AppTheme.secondaryText
-
-        let allButtons: [(UIButton, UILabel, UIView, Item)] = [
-            (modesButton, modesLabel, modesIndicator, .modes),
-            (profileButton, profileLabel, profileIndicator, .profile),
-            (vpnButton, vpnLabel, vpnIndicator, .vpn),
-            (helpButton, helpLabel, helpIndicator, .help)
-        ]
-
-        for (button, label, indicator, thisItem) in allButtons {
-            let isSelected = thisItem == item
-            button.tintColor = isSelected ? selectedColor : normalColor
-            label.textColor = isSelected ? selectedColor : normalColor
-            UIView.animate(withDuration: AppTheme.durationPopover) {
-                indicator.alpha = isSelected ? 1.0 : 0.0
-            }
+        modesButton.tintColor = item == .modes ? selectedColor : normalColor
+        profileButton.tintColor = item == .profile ? selectedColor : normalColor
+        vpnButton.tintColor = item == .vpn ? selectedColor : normalColor
+        helpButton.tintColor = item == .help ? selectedColor : normalColor
+        modesLabel.textColor = item == .modes ? selectedColor : normalColor
+        profileLabel.textColor = item == .profile ? selectedColor : normalColor
+        vpnLabel.textColor = item == .vpn ? selectedColor : normalColor
+        helpLabel.textColor = item == .help ? selectedColor : normalColor
+        UIView.animate(withDuration: AppTheme.durationPopover) {
+            self.modesIndicator.alpha = item == .modes ? 1.0 : 0.0
+            self.profileIndicator.alpha = item == .profile ? 1.0 : 0.0
+            self.vpnIndicator.alpha = item == .vpn ? 1.0 : 0.0
+            self.helpIndicator.alpha = item == .help ? 1.0 : 0.0
         }
     }
 
-    private func configureBase() {
+    enum Item { case modes, profile, vpn, help }
+
+    private func configure() {
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = AppTheme.backgroundRaise.withAlphaComponent(0.96)
         layer.cornerRadius = 18
@@ -82,34 +66,17 @@ final class DavizinBottomNavView: UIView {
         configureButton(profileButton, image: "person.crop.circle.fill", label: profileLabel, text: "PERFIL", accessibility: "Perfil", action: #selector(profileTapped))
         configureButton(vpnButton, image: "iphone", label: vpnLabel, text: "iOS 27", accessibility: "iOS 27", action: #selector(vpnTapped))
         configureButton(helpButton, image: "questionmark.circle.fill", label: helpLabel, text: "AYUDA", accessibility: "Centro de ayuda", action: #selector(helpTapped))
-    }
 
-    private func buildStack(for mode: NavMode) {
-        currentStack?.removeFromSuperview()
-
-        let items: [UIView]
-        switch mode {
-        case .ios27:
-            items = [
-                makeItem(button: modesButton, label: modesLabel, indicator: modesIndicator),
-                makeItem(button: profileButton, label: profileLabel, indicator: profileIndicator),
-                makeItem(button: vpnButton, label: vpnLabel, indicator: vpnIndicator),
-                makeItem(button: helpButton, label: helpLabel, indicator: helpIndicator)
-            ]
-        case .ios26:
-            items = [
-                makeItem(button: modesButton, label: modesLabel, indicator: modesIndicator),
-                makeItem(button: profileButton, label: profileLabel, indicator: profileIndicator),
-                makeItem(button: helpButton, label: helpLabel, indicator: helpIndicator)
-            ]
-        }
-
-        let stack = UIStackView(arrangedSubviews: items)
+        let stack = UIStackView(arrangedSubviews: [
+            makeItem(button: modesButton, label: modesLabel, indicator: modesIndicator),
+            makeItem(button: profileButton, label: profileLabel, indicator: profileIndicator),
+            makeItem(button: vpnButton, label: vpnLabel, indicator: vpnIndicator),
+            makeItem(button: helpButton, label: helpLabel, indicator: helpIndicator)
+        ])
         stack.axis = .horizontal
         stack.distribution = .fillEqually
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
-        currentStack = stack
 
         let isPad = UIDevice.current.userInterfaceIdiom == .pad
         let stackTop = stack.topAnchor.constraint(equalTo: topAnchor, constant: isPad ? 8 : 6)
@@ -122,7 +89,6 @@ final class DavizinBottomNavView: UIView {
             stackTop,
             stackBottom
         ])
-
         setSelected(.modes)
     }
 

@@ -66,22 +66,6 @@ final class DavizinBridge {
             self?.handleOperation(operation)
         }
 
-        viewController.onKexploitExploit = { [weak self] in
-            self?.handleKexploitFromTab()
-        }
-
-        viewController.onKexploitInject = { [weak self] game, mode in
-            self?.handleKexploitInject(game: game, mode: mode)
-        }
-
-        viewController.onKexploitOpenGame = { [weak self] game in
-            self?.vc?.openGameFromKexploit(game)
-        }
-
-        viewController.onVersionSelected = { path in
-            NSLog("[DavizinBridge] Usuario seleccionó: %@", path.rawValue)
-        }
-
         viewController.onClose = {
             // Nada - no cerramos
         }
@@ -149,7 +133,7 @@ final class DavizinBridge {
             let mode = selectedMode ?? savedModeID.flatMap { DavizinModeCatalog.mode(id: $0) }
             vc?.showCleanupRecoveryScreen(for: game, mode: mode)
         } else {
-            vc?.showVersionSelectorScreen()
+            vc?.showGameSelectionScreen()
         }
     }
 
@@ -177,15 +161,16 @@ final class DavizinBridge {
             return
         }
 
-        // iOS 26 + pairing → AirLift (fiable, sin kexploit).
-        // iOS 26 sin pairing → kexploit (fallback).
-        // iOS 27+ → AirLift obligatorio.
+        // Decisión de camino por versión de iOS, NO por "hay pairing AirLift guardado":
+        //  - iOS ≤ 26.0.x  → kexploit directo (como la IPA #252). Sin VPN, sin pairing,
+        //                     sin preflight de Modo Avión. Funciona en WiFi y datos.
+        //  - iOS 26.1+ / 27+ → AirLift + VPN loopback. En celular puro pedimos Modo Avión
+        //                     (workaround oficial del ecosistema).
         let iosVersion = NyxelDeviceInfo.versionTuple
-        let canUseKexploit = NyxelSupportPolicy.supportsKernelOffsets(
+        let useKexploitPath = NyxelSupportPolicy.supportsKernelOffsets(
             major: iosVersion.major,
             minor: iosVersion.minor
         )
-        let useKexploitPath = canUseKexploit && !Self.airLiftRouteAvailable
 
         // El preflight de Modo Avión solo aplica al camino AirLift.
         if !useKexploitPath {
@@ -221,7 +206,7 @@ final class DavizinBridge {
             || mode.label.lowercased().contains("hybrid")
 
         guard useKexploitPath || Self.airLiftRouteAvailable else {
-            let message = "iOS \(iosVersion.major).\(iosVersion.minor) requiere pairing AirLift. Agrega el pairing desde Ajustes."
+            let message = "Offsets de kernel validados solo hasta iOS 26.0.x; agrega pairing AirLift para iOS \(iosVersion.major).\(iosVersion.minor)."
             NyxelActivityLog.record(message)
             DispatchQueue.main.async {
                 self.operationInFlight = false
@@ -233,29 +218,18 @@ final class DavizinBridge {
         let injectNow: () -> Void = { [weak self] in
             guard let self = self else { return }
             DispatchQueue.global(qos: .userInitiated).async {
+                // Prioridad por versión: en iOS ≤26.0.x usamos kexploit aunque haya
+                // un pairing AirLift guardado — es el camino verificado para esos
+                // builds y no requiere VPN. AirLift queda para iOS 26.1+ y 27+.
                 if useKexploitPath {
-                    NyxelActivityLog.record("iOS \(iosVersion.major).\(iosVersion.minor): usando kexploit (sin pairing disponible)")
+                    NyxelActivityLog.record("iOS \(iosVersion.major).\(iosVersion.minor): usando kexploit (ruta verificada para este build)")
                     if sandbox_access_is_active() == 0 {
-                        let maxAttempts: Int32 = 5
-                        NyxelActivityLog.record("Iniciando kexploit_opa334...")
-                        var lastCode: Int32 = 0
-                        var kexploitOK = false
-                        for attempt in 1...maxAttempts {
-                            let exploitResult = kexploit_opa334()
-                            if exploitResult == 0 {
-                                kexploitOK = true
-                                break
-                            }
-                            lastCode = abs(exploitResult)
-                            let detail = Self.kxpDetail(lastCode)
-                            NyxelActivityLog.record("Intento \(attempt)/\(maxAttempts) falló: KXP-\(lastCode) — \(detail)")
-                            if attempt < maxAttempts {
-                                NyxelActivityLog.record("Reintento \(attempt + 1)/\(maxAttempts)...")
-                            }
-                        }
-                        guard kexploitOK else {
-                            let message = "kexploit_opa334 falló tras \(maxAttempts) intentos: code \(lastCode) — \(Self.kxpDetail(lastCode))"
-                            NyxelActivityLog.record(message)
+                        NyxelActivityLog.record("Sandbox no activo, ejecutando exploit antes de inyectar...")
+                        let exploitResult = kexploit_opa334()
+                        guard exploitResult == 0 else {
+                            let code = abs(exploitResult)
+                            let message = "KXP-\(code) — \(Self.kxpDetail(code))"
+                            NyxelActivityLog.record("Exploit pre-inyección falló (\(message)); se detiene antes de MCM/bad_query")
                             DispatchQueue.main.async {
                                 self.operationInFlight = false
                                 self.vc?.setOperationState(.failed(message))
@@ -279,26 +253,12 @@ final class DavizinBridge {
                 } else if Self.airLiftRouteAvailable {
                     NyxelActivityLog.record("AirLift disponible: usando Remote Pairing/RSD para la escritura")
                 } else if sandbox_access_is_active() == 0 {
-                    let maxAttempts: Int32 = 5
-                    NyxelActivityLog.record("Iniciando kexploit_opa334...")
-                    var lastCode: Int32 = 0
-                    var kexploitOK = false
-                    for attempt in 1...maxAttempts {
-                        let exploitResult = kexploit_opa334()
-                        if exploitResult == 0 {
-                            kexploitOK = true
-                            break
-                        }
-                        lastCode = abs(exploitResult)
-                        let detail = Self.kxpDetail(lastCode)
-                        NyxelActivityLog.record("Intento \(attempt)/\(maxAttempts) falló: KXP-\(lastCode) — \(detail)")
-                        if attempt < maxAttempts {
-                            NyxelActivityLog.record("Reintento \(attempt + 1)/\(maxAttempts)...")
-                        }
-                    }
-                    guard kexploitOK else {
-                        let message = "kexploit_opa334 falló tras \(maxAttempts) intentos: code \(lastCode) — \(Self.kxpDetail(lastCode))"
-                        NyxelActivityLog.record(message)
+                    NyxelActivityLog.record("Sandbox no activo, ejecutando exploit antes de inyectar...")
+                    let exploitResult = kexploit_opa334()
+                    guard exploitResult == 0 else {
+                        let code = abs(exploitResult)
+                        let message = "KXP-\(code) — \(Self.kxpDetail(code))"
+                        NyxelActivityLog.record("Exploit pre-inyección falló (\(message)); se detiene antes de MCM/bad_query")
                         DispatchQueue.main.async {
                             self.operationInFlight = false
                             self.vc?.setOperationState(.failed(message))
@@ -344,6 +304,8 @@ final class DavizinBridge {
             }
         }
 
+        // iOS ≤26.0.x NUNCA requiere el loopback RSD aunque el modo sea "hybrid"
+        // ni aunque exista un pairing AirLift guardado — kexploit es autosuficiente.
         let requiresRSDLoopback = !useKexploitPath && (wantsHybrid || Self.airLiftRouteAvailable)
         guard requiresRSDLoopback else {
             injectNow()
@@ -389,154 +351,6 @@ final class DavizinBridge {
                 self.vc?.setOperationState(ok ? .succeeded(result.message) : .failed("La inyección se realizó, pero no se pudo confirmar el consumo del modo. No vuelvas a intentarlo hasta revisar la conexión."))
             }
         }.resume()
-    }
-
-    private func handleKexploitFromTab() {
-        guard !operationInFlight else {
-            vc?.setKexploitState(.failed("NYX-006 — Ya hay una operación en curso."))
-            return
-        }
-        operationInFlight = true
-        vc?.setKexploitState(.running)
-
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
-
-            if sandbox_access_is_active() != 0 {
-                NyxelActivityLog.record("Sandbox ya activo, exploit innecesario")
-                DispatchQueue.main.async {
-                    self.operationInFlight = false
-                    self.vc?.setKexploitState(.sandboxActive)
-                }
-                return
-            }
-
-            let maxAttempts: Int32 = 5
-            NyxelActivityLog.record("Iniciando kexploit_opa334...")
-            var lastCode: Int32 = 0
-            var kexploitOK = false
-            for attempt in 1...maxAttempts {
-                let exploitResult = kexploit_opa334()
-                if exploitResult == 0 {
-                    kexploitOK = true
-                    break
-                }
-                lastCode = abs(exploitResult)
-                let detail = Self.kxpDetail(lastCode)
-                NyxelActivityLog.record("Intento \(attempt)/\(maxAttempts) falló: KXP-\(lastCode) — \(detail)")
-                if attempt < maxAttempts {
-                    NyxelActivityLog.record("Reintento \(attempt + 1)/\(maxAttempts)...")
-                }
-            }
-            guard kexploitOK else {
-                let message = "kexploit_opa334 falló tras \(maxAttempts) intentos: code \(lastCode) — \(Self.kxpDetail(lastCode))"
-                NyxelActivityLog.record(message)
-                DispatchQueue.main.async {
-                    self.operationInFlight = false
-                    self.vc?.setKexploitState(.failed(message))
-                }
-                return
-            }
-
-            NyxelActivityLog.record("kexploit exitoso, ejecutando sandbox_escape...")
-            let selfProc = proc_self()
-            let escapeResult = sandbox_escape(selfProc)
-            let active = sandbox_access_is_active() != 0
-            NyxelActivityLog.record("sandbox_escape return=\(escapeResult), activo: \(active)")
-
-            DispatchQueue.main.async {
-                self.operationInFlight = false
-                self.hapticFeedback(success: active)
-                if active {
-                    self.vc?.setKexploitState(.sandboxActive)
-                } else {
-                    self.vc?.setKexploitState(.failed("SBX-001 — Sandbox escape no verificado."))
-                }
-            }
-        }
-    }
-
-    private func handleKexploitInject(game: DavizinGame, mode: DavizinMode) {
-        guard !operationInFlight else {
-            vc?.setKexploitState(.failed("NYX-006 — Ya hay una operación en curso."))
-            return
-        }
-        guard !sessionKey.isEmpty else {
-            vc?.setKexploitState(.failed("NYX-001 — Sesión no autorizada."))
-            return
-        }
-        operationInFlight = true
-        vc?.setKexploitState(.injecting)
-
-        let key = sessionKey
-        let hwid = sessionHWID
-
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
-
-            if sandbox_access_is_active() == 0 {
-                let maxAttempts: Int32 = 5
-                NyxelActivityLog.record("Iniciando kexploit_opa334...")
-                var lastCode: Int32 = 0
-                var kexploitOK = false
-                for attempt in 1...maxAttempts {
-                    let exploitResult = kexploit_opa334()
-                    if exploitResult == 0 {
-                        kexploitOK = true
-                        break
-                    }
-                    lastCode = abs(exploitResult)
-                    let detail = Self.kxpDetail(lastCode)
-                    NyxelActivityLog.record("Intento \(attempt)/\(maxAttempts) falló: KXP-\(lastCode) — \(detail)")
-                    if attempt < maxAttempts {
-                        NyxelActivityLog.record("Reintento \(attempt + 1)/\(maxAttempts)...")
-                    }
-                }
-                guard kexploitOK else {
-                    let message = "kexploit_opa334 falló tras \(maxAttempts) intentos: code \(lastCode) — \(Self.kxpDetail(lastCode))"
-                    NyxelActivityLog.record(message)
-                    DispatchQueue.main.async {
-                        self.operationInFlight = false
-                        self.vc?.setKexploitState(.failed(message))
-                    }
-                    return
-                }
-
-                let selfProc = proc_self()
-                let escapeResult = sandbox_escape(selfProc)
-                let sandboxActive = sandbox_access_is_active() != 0
-                NyxelActivityLog.record("Exploit pre-inyección: sandbox_escape=\(escapeResult), activo=\(sandboxActive)")
-                guard escapeResult == 0 && sandboxActive else {
-                    let message = "SBX-001 — El exploit terminó, pero el sandbox escape no quedó activo (\(escapeResult))."
-                    DispatchQueue.main.async {
-                        self.operationInFlight = false
-                        self.vc?.setKexploitState(.failed(message))
-                    }
-                    return
-                }
-            }
-
-            guard NyxelRuntimeState.shared.isTrustedForCriticalOperation() else {
-                NyxelActivityLog.record("NYX-TRUST failed at pre-write")
-                DispatchQueue.main.async {
-                    self.operationInFlight = false
-                    self.vc?.setKexploitState(.injected("Operación completada"))
-                }
-                return
-            }
-
-            let result = InjectorService.inject(game: game, mode: mode, key: key, hwid: hwid)
-            DispatchQueue.main.async {
-                self.hapticFeedback(success: result.success)
-                self.operationInFlight = false
-                if result.success {
-                    NyxelCleanupFlow.markInjectionSucceeded(for: game)
-                    self.vc?.setKexploitState(.injected(result.message))
-                } else {
-                    self.vc?.setKexploitState(.failed(result.message))
-                }
-            }
-        }
     }
 
     private func handleOperation(_ operation: DavizinOperationKind) {
@@ -588,12 +402,12 @@ final class DavizinBridge {
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self else { return }
 
+                // Decidir por versión (unificado): iOS ≤26.0.x → kexploit; resto → AirLift.
                 let version = NyxelDeviceInfo.versionTuple
-                let canUseKexploit = NyxelSupportPolicy.supportsKernelOffsets(
+                let useKexploitPath = NyxelSupportPolicy.supportsKernelOffsets(
                     major: version.major,
                     minor: version.minor
                 )
-                let useKexploitPath = canUseKexploit && !Self.airLiftRouteAvailable
 
                 if !useKexploitPath && Self.airLiftRouteAvailable {
                     NyxelActivityLog.record("Remote Pairing guardado: se usará el túnel RSD/AirLift real")
@@ -605,7 +419,7 @@ final class DavizinBridge {
                 }
 
                 if !useKexploitPath {
-                    let message = "iOS \(version.major).\(version.minor) requiere pairing AirLift. Agrega el pairing desde Ajustes."
+                    let message = "Offsets de kernel validados solo hasta iOS 26.0.x; no se ejecutó el exploit en iOS \(version.major).\(version.minor)."
                     NyxelActivityLog.record(message)
                     DispatchQueue.main.async {
                         self.operationInFlight = false
@@ -623,29 +437,15 @@ final class DavizinBridge {
                     return
                 }
 
-                let maxAttempts: Int32 = 5
                 NyxelActivityLog.record("Iniciando kexploit_opa334...")
-                var lastCode: Int32 = 0
-                var kexploitOK = false
-                for attempt in 1...maxAttempts {
-                    let exploitResult = kexploit_opa334()
-                    if exploitResult == 0 {
-                        kexploitOK = true
-                        break
-                    }
-                    lastCode = abs(exploitResult)
-                    let detail = Self.kxpDetail(lastCode)
-                    NyxelActivityLog.record("Intento \(attempt)/\(maxAttempts) falló: KXP-\(lastCode) — \(detail)")
-                    if attempt < maxAttempts {
-                        NyxelActivityLog.record("Reintento \(attempt + 1)/\(maxAttempts)...")
-                    }
-                }
-                guard kexploitOK else {
-                    let message = "kexploit_opa334 falló tras \(maxAttempts) intentos: code \(lastCode) — \(Self.kxpDetail(lastCode))"
-                    NyxelActivityLog.record(message)
+                let exploitResult = kexploit_opa334()
+                guard exploitResult == 0 else {
+                    let code = abs(exploitResult)
+                    let detail = Self.kxpDetail(code)
+                    NyxelActivityLog.record("kexploit_opa334 falló: code \(code) — \(detail)")
                     DispatchQueue.main.async {
                         self.operationInFlight = false
-                        self.vc?.setOperationState(.failed(message))
+                        self.vc?.setOperationState(.failed("KXP-\(code) — \(detail)"))
                     }
                     return
                 }
@@ -784,7 +584,7 @@ final class DavizinBridge {
     static func kxpDetail(_ code: Int32) -> String {
         switch code {
         case 2:  return "Versión iOS no soportada"
-        case 11: return "IOSurface agotado — cierra la app completamente desde el multitarea y vuelve a abrir"
+        case 11: return "IOSurface create falló"
         case 12: return "Memory entry falló"
         case 13: return "VM map falló (phys)"
         case 21: return "VM alloc falló (pe_v1)"
@@ -809,7 +609,7 @@ final class DavizinBridge {
         default:
             if code >= 7100 && code < 7200 {
                 let kr = code - 7100
-                return "Race perdida (kr=\(kr)) — cierra la app desde el multitarea y vuelve a intentar"
+                return "Race VM map falló (kr=\(kr))"
             }
             return "No se pudo preparar el entorno"
         }
