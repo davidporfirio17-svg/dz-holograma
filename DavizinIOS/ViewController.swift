@@ -403,7 +403,9 @@ final class ViewController: UIViewController {
 						major: version.majorVersion,
 						minor: version.minorVersion
 					)
-					let headerColor: UIColor = pairingRequired ? AppTheme.success : AppTheme.accentWarm
+					let airLiftAvailable = NixelAirLiftFileChannel.isAvailable
+					let usesAirLift = pairingRequired || (kernelOffsetsAvailable && airLiftAvailable)
+					let headerColor: UIColor = usesAirLift ? AppTheme.success : AppTheme.accentWarm
 					self.headerView.setSystemCompatibility(
 						"iOS/iPadOS \(NyxelSupportPolicy.currentSystemDescription) • Contenedor detectado",
 						color: headerColor
@@ -413,8 +415,11 @@ final class ViewController: UIViewController {
 					if pairingRequired {
 						message = "✅ Sistema listo. iOS 27 usa pairing/AirLift para operar — todo configurado."
 						messageColor = AppTheme.success
+					} else if kernelOffsetsAvailable && airLiftAvailable {
+						message = "✅ Sistema listo. Pairing detectado — se usará AirLift para operar."
+						messageColor = AppTheme.success
 					} else if kernelOffsetsAvailable {
-						message = "⚠️ MCM encontró el contenedor; eso no confirma permiso de escritura. La ruta depende de que kernel y sandbox estén activos."
+						message = "⚠️ Sin pairing. Se usará kexploit como ruta alternativa. Para mejor fiabilidad, agrega un pairing desde Ajustes."
 						messageColor = AppTheme.accentWarm
 					} else {
 						message = "⚠️ MCM encontró el contenedor; no hay una ruta de escritura validada para este build."
@@ -909,7 +914,11 @@ extension ViewController: VersionSelectorDelegate {
         NyxelActivityLog.record("Versión seleccionada: \(version.rawValue)")
         switch version {
         case .ios26:
-            bottomNavView.setMode(.ios26)
+            if NixelAirLiftFileChannel.isAvailable {
+                bottomNavView.setMode(.ios27)
+            } else {
+                bottomNavView.setMode(.ios26)
+            }
         case .ios27:
             bottomNavView.setMode(.ios27)
         }

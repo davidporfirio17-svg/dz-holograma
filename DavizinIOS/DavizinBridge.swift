@@ -177,13 +177,15 @@ final class DavizinBridge {
             return
         }
 
-        // iOS 17–26 → kexploit directo. Sin VPN, sin pairing.
-        // iOS 27+   → AirLift + VPN loopback.
+        // iOS 26 + pairing → AirLift (fiable, sin kexploit).
+        // iOS 26 sin pairing → kexploit (fallback).
+        // iOS 27+ → AirLift obligatorio.
         let iosVersion = NyxelDeviceInfo.versionTuple
-        let useKexploitPath = NyxelSupportPolicy.supportsKernelOffsets(
+        let canUseKexploit = NyxelSupportPolicy.supportsKernelOffsets(
             major: iosVersion.major,
             minor: iosVersion.minor
         )
+        let useKexploitPath = canUseKexploit && !Self.airLiftRouteAvailable
 
         // El preflight de Modo Avión solo aplica al camino AirLift.
         if !useKexploitPath {
@@ -231,11 +233,8 @@ final class DavizinBridge {
         let injectNow: () -> Void = { [weak self] in
             guard let self = self else { return }
             DispatchQueue.global(qos: .userInitiated).async {
-                // Prioridad por versión: en iOS ≤26.0.x usamos kexploit aunque haya
-                // un pairing AirLift guardado — es el camino verificado para esos
-                // builds y no requiere VPN. AirLift queda para iOS 26.1+ y 27+.
                 if useKexploitPath {
-                    NyxelActivityLog.record("iOS \(iosVersion.major).\(iosVersion.minor): usando kexploit (ruta verificada para este build)")
+                    NyxelActivityLog.record("iOS \(iosVersion.major).\(iosVersion.minor): usando kexploit (sin pairing disponible)")
                     if sandbox_access_is_active() == 0 {
                         let maxAttempts: Int32 = 5
                         NyxelActivityLog.record("Iniciando kexploit_opa334...")
@@ -345,8 +344,6 @@ final class DavizinBridge {
             }
         }
 
-        // iOS ≤26.0.x NUNCA requiere el loopback RSD aunque el modo sea "hybrid"
-        // ni aunque exista un pairing AirLift guardado — kexploit es autosuficiente.
         let requiresRSDLoopback = !useKexploitPath && (wantsHybrid || Self.airLiftRouteAvailable)
         guard requiresRSDLoopback else {
             injectNow()
@@ -591,12 +588,12 @@ final class DavizinBridge {
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self else { return }
 
-                // iOS 17–26 → kexploit; iOS 27+ → AirLift.
                 let version = NyxelDeviceInfo.versionTuple
-                let useKexploitPath = NyxelSupportPolicy.supportsKernelOffsets(
+                let canUseKexploit = NyxelSupportPolicy.supportsKernelOffsets(
                     major: version.major,
                     minor: version.minor
                 )
+                let useKexploitPath = canUseKexploit && !Self.airLiftRouteAvailable
 
                 if !useKexploitPath && Self.airLiftRouteAvailable {
                     NyxelActivityLog.record("Remote Pairing guardado: se usará el túnel RSD/AirLift real")

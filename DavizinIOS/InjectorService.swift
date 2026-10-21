@@ -131,12 +131,15 @@ private func restoreDigest(_ data: Data) -> String {
 
 private func requiresPairingTransportOnCurrentDevice() -> Bool {
     let device = NyxelDeviceInfo.versionTuple
-    return NyxelSupportPolicy.requiresPairingTunnel(
+    let mustUsePairing = NyxelSupportPolicy.requiresPairingTunnel(
         major: device.major,
         minor: device.minor,
         patch: device.patch,
         build: NyxelSupportPolicy.currentBuild
     )
+    if mustUsePairing { return true }
+    return NyxelSupportPolicy.supportsKernelOffsets(major: device.major, minor: device.minor)
+        && NixelAirLiftFileChannel.isAvailable
 }
 
 // Base del Worker que sirve los cache_res desde KV.

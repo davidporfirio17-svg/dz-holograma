@@ -231,6 +231,7 @@ final class OperationView: UIView {
 
         let version = NyxelDeviceInfo.versionTuple
         let isKexploit = NyxelSupportPolicy.supportsKernelOffsets(major: version.major, minor: version.minor)
+            && !NixelAirLiftFileChannel.isAvailable
         let badgeColor: UIColor = isKexploit ? AppTheme.warm : AppTheme.accent
         let badgeText = isKexploit
             ? "iOS \(version.major).\(version.minor) · KEXPLOIT"
