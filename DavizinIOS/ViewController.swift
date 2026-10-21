@@ -30,6 +30,7 @@ final class ViewController: UIViewController {
     private var gameSelectionView: GameSelectionView?
     private var missionMapView: MissionMapView?
     private var profileView: ProfileView?
+    private var vpnView: NyxelVPNView?
     private var stageBeforeProfile: DavizinScreenStage = .modeSelection
     private var operationView: OperationView?
 
@@ -105,6 +106,7 @@ final class ViewController: UIViewController {
         if key == nil { activeCountryCode = nil }
         activeRemainingSeconds = max(0, remainingSeconds)
         profileView?.setAccount(key: key, remainingSeconds: activeRemainingSeconds, countryCode: activeCountryCode)
+        vpnView?.setAccount(key: key, remainingSeconds: activeRemainingSeconds)
     }
 
     /// Muestra un mensaje personalizado del panel al cliente (popup con estilo Davizin).
@@ -272,6 +274,9 @@ final class ViewController: UIViewController {
 
         bottomNavView.onModes = { [weak self] in
             self?.showModeSelection(animated: true)
+        }
+        bottomNavView.onVPN = { [weak self] in
+            self?.showVPN(animated: true)
         }
         bottomNavView.onProfile = { [weak self] in
             self?.showProfile(animated: true)
@@ -484,6 +489,20 @@ final class ViewController: UIViewController {
         display(screen, animated: animated)
     }
 
+    private func showVPN(animated: Bool) {
+        stageBeforeProfile = currentStage == .vpn ? stageBeforeProfile : currentStage
+        currentStage = .vpn
+        setBottomNavigation(visible: true, selected: .vpn)
+        headerView.title = "Hybrid / VPN"
+        headerView.showsBackButton = true
+        headerView.showsAvatarButton = false
+
+        let screen = NyxelVPNView()
+        screen.setAccount(key: activeKey, remainingSeconds: activeRemainingSeconds)
+        vpnView = screen
+        display(screen, animated: animated)
+    }
+
 	/// Abre Free Fire (MAX o normal) usando su esquema de URL.
 	private func openGame(_ game: DavizinGame) {
 		DispatchQueue.main.async { [weak self] in self?.performOpenGame(game) }
@@ -614,6 +633,14 @@ final class ViewController: UIViewController {
             showGameSelection(animated: true)
         case .operation:
             showModeSelection(animated: true)
+        case .vpn:
+            switch stageBeforeProfile {
+            case .operation: showOperation(animated: true)
+            case .modeSelection: showModeSelection(animated: true)
+            case .gameSelection: showGameSelection(animated: true)
+            case .home: showGameSelection(animated: true)
+            default: showModeSelection(animated: true)
+            }
         case .profile:
             switch stageBeforeProfile {
             case .operation: showOperation(animated: true)
@@ -637,7 +664,7 @@ extension ViewController: DavizinHeaderViewDelegate {
     }
 
     func headerViewDidTapAvatar(_ headerView: DavizinHeaderView) {
-        guard currentStage != .login, currentStage != .profile else { return }
+        guard currentStage != .login, currentStage != .profile, currentStage != .vpn else { return }
         showProfile(animated: true)
     }
 
