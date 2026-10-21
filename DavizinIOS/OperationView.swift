@@ -8,6 +8,8 @@ final class OperationView: UIView {
     weak var delegate: OperationViewDelegate?
 
     private let cardView = DavizinCardView()
+    private let pathBadge = UIView()
+    private let pathLabel = UILabel()
     private let titleLabel = UILabel()
     private let subtitleLabel = UILabel()
     private let checklistLabel = UILabel()
@@ -227,6 +229,32 @@ final class OperationView: UIView {
         subtitleLabel.isHidden = false
         updateSubtitle()
 
+        let version = NyxelDeviceInfo.versionTuple
+        let isKexploit = NyxelSupportPolicy.supportsKernelOffsets(major: version.major, minor: version.minor)
+        let badgeColor: UIColor = isKexploit ? AppTheme.warm : AppTheme.accent
+        let badgeText = isKexploit
+            ? "iOS \(version.major).\(version.minor) · KEXPLOIT"
+            : "iOS \(version.major).\(version.minor) · AIRLIFT"
+
+        pathBadge.backgroundColor = badgeColor.withAlphaComponent(0.15)
+        pathBadge.layer.cornerRadius = 8.0
+        pathBadge.layer.borderWidth = 1.0
+        pathBadge.layer.borderColor = badgeColor.withAlphaComponent(0.5).cgColor
+        pathBadge.translatesAutoresizingMaskIntoConstraints = false
+
+        pathLabel.text = badgeText
+        pathLabel.font = .systemFont(ofSize: 11, weight: .bold)
+        pathLabel.textColor = badgeColor
+        pathLabel.textAlignment = .center
+        pathLabel.translatesAutoresizingMaskIntoConstraints = false
+        pathBadge.addSubview(pathLabel)
+        NSLayoutConstraint.activate([
+            pathBadge.heightAnchor.constraint(equalToConstant: 28),
+            pathLabel.leadingAnchor.constraint(equalTo: pathBadge.leadingAnchor, constant: 12),
+            pathLabel.trailingAnchor.constraint(equalTo: pathBadge.trailingAnchor, constant: -12),
+            pathLabel.centerYAnchor.constraint(equalTo: pathBadge.centerYAnchor)
+        ])
+
         checklistLabel.font = AppTheme.monoFont(10)
         checklistLabel.textColor = AppTheme.secondaryText
         checklistLabel.numberOfLines = 0
@@ -314,6 +342,7 @@ final class OperationView: UIView {
         stackView.spacing = 12.0
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.addArrangedSubview(titleLabel)
+        stackView.addArrangedSubview(pathBadge)
         stackView.addArrangedSubview(subtitleLabel)
         stackView.addArrangedSubview(checklistLabel)
         stackView.addArrangedSubview(noticeCard)

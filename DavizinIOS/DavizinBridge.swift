@@ -154,11 +154,8 @@ final class DavizinBridge {
             return
         }
 
-        // Decisión de camino por versión de iOS, NO por "hay pairing AirLift guardado":
-        //  - iOS ≤ 26.0.x  → kexploit directo (como la IPA #252). Sin VPN, sin pairing,
-        //                     sin preflight de Modo Avión. Funciona en WiFi y datos.
-        //  - iOS 26.1+ / 27+ → AirLift + VPN loopback. En celular puro pedimos Modo Avión
-        //                     (workaround oficial del ecosistema).
+        // iOS 17–26 → kexploit directo. Sin VPN, sin pairing.
+        // iOS 27+   → AirLift + VPN loopback.
         let iosVersion = NyxelDeviceInfo.versionTuple
         let useKexploitPath = NyxelSupportPolicy.supportsKernelOffsets(
             major: iosVersion.major,
@@ -271,32 +268,6 @@ final class DavizinBridge {
                     }
                 } else if Self.airLiftRouteAvailable {
                     NyxelActivityLog.record("AirLift disponible: usando Remote Pairing/RSD para la escritura")
-                } else if sandbox_access_is_active() == 0 {
-                    NyxelActivityLog.record("Sandbox no activo, ejecutando exploit antes de inyectar...")
-                    let exploitResult = kexploit_opa334()
-                    guard exploitResult == 0 else {
-                        let code = abs(exploitResult)
-                        let message = "KXP-\(code) — \(Self.kxpDetail(code))"
-                        NyxelActivityLog.record("Exploit pre-inyección falló (\(message)); se detiene antes de MCM/bad_query")
-                        DispatchQueue.main.async {
-                            self.operationInFlight = false
-                            self.vc?.setOperationState(.failed(message))
-                        }
-                        return
-                    }
-
-                    let selfProc = proc_self()
-                    let escapeResult = sandbox_escape(selfProc)
-                    let sandboxActive = sandbox_access_is_active() != 0
-                    NyxelActivityLog.record("Exploit pre-inyección: sandbox_escape=\(escapeResult), activo=\(sandboxActive)")
-                    guard escapeResult == 0 && sandboxActive else {
-                        let message = "SBX-001 — El exploit terminó, pero el sandbox escape no quedó activo (\(escapeResult))."
-                        DispatchQueue.main.async {
-                            self.operationInFlight = false
-                            self.vc?.setOperationState(.failed(message))
-                        }
-                        return
-                    }
                 }
 
                 // Chequeo distribuido 2/N (justo antes del write real): si el
@@ -412,7 +383,7 @@ final class DavizinBridge {
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self else { return }
 
-                // Decidir por versión (unificado): iOS ≤26.0.x → kexploit; resto → AirLift.
+                // iOS 17–26 → kexploit; iOS 27+ → AirLift.
                 let version = NyxelDeviceInfo.versionTuple
                 let useKexploitPath = NyxelSupportPolicy.supportsKernelOffsets(
                     major: version.major,
