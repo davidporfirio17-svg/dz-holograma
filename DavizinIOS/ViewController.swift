@@ -264,16 +264,12 @@ final class ViewController: UIViewController {
     @objc private func appDidEnterBackground() { backgroundedAt = Date() }
 
     @objc private func appWillEnterForeground() {
-        NyxelCleanupFlow.markReturnedToNyxel()
         if let backgroundedAt, Date().timeIntervalSince(backgroundedAt) >= inactivityLockInterval {
             activeKey = nil
             activeRemainingSeconds = 0
             NyxelActivityLog.record("Sesión bloqueada por inactividad")
             showLogin(animated: true)
             return
-        }
-        if NyxelCleanupFlow.hasPendingWork, let game = NyxelCleanupFlow.game {
-            showCleanupRecoveryScreen(for: game)
         }
     }
 
@@ -504,9 +500,6 @@ final class ViewController: UIViewController {
         }
         operationView = screen
         display(screen, animated: animated)
-        if NyxelCleanupFlow.hasPendingWork {
-            screen.applyCleanupStage(NyxelCleanupFlow.stage)
-        }
     }
 
     private func showVPN(animated: Bool) {
@@ -570,21 +563,7 @@ final class ViewController: UIViewController {
 
 	/// Abre Free Fire (MAX o normal) usando su esquema de URL.
 	private func openGame(_ game: DavizinGame) {
-		let beginOpening = { [weak self] in
-			DispatchQueue.main.async { self?.performOpenGame(game) }
-		}
-		if NyxelCleanupFlow.stage == .readyToOpen {
-			NyxelCleanupFlow.requestReminderPermission { [weak self] allowed in
-					guard !allowed else { beginOpening(); return }
-					DispatchQueue.main.async {
-						self?.showNotice("Activa las notificaciones de Nyxel si quieres recibir el recordatorio. Si no, vuelve manualmente después de 5 segundos y pulsa LIMPIAR SESIÓN SÍ O SÍ.") {
-							beginOpening()
-						}
-					}
-			}
-		} else {
-			beginOpening()
-		}
+		DispatchQueue.main.async { [weak self] in self?.performOpenGame(game) }
 	}
 
 	private func performOpenGame(_ game: DavizinGame) {
@@ -617,20 +596,9 @@ final class ViewController: UIViewController {
 
 				UIApplication.shared.open(urls[index], options: [:]) { success in
 					if success {
-						let completingCycle = NyxelCleanupFlow.stage == .readyToReopen
-						NyxelCleanupFlow.markGameOpened()
 						NyxelActivityLog.record("\(game.rawValue) abierto")
 						DispatchQueue.main.async {
-							if completingCycle {
-								if self.activeKey != nil && self.activeRemainingSeconds > 0 {
-									self.showOperation(animated: false)
-								} else {
-									self.showLogin(animated: true)
-								}
-							} else {
-								self.operationView?.showGameOpenResult(success: true)
-								self.operationView?.applyCleanupStage(NyxelCleanupFlow.stage)
-							}
+							self.operationView?.showGameOpenResult(success: true)
 						}
 						return
 					}

@@ -127,14 +127,7 @@ final class DavizinBridge {
     }
 
     private func continueAfterLogin() {
-        if NyxelCleanupFlow.hasPendingWork, let game = NyxelCleanupFlow.game {
-            selectedGame = game
-            let savedModeID = UserDefaults.standard.string(forKey: "dz_last_mode")
-            let mode = selectedMode ?? savedModeID.flatMap { DavizinModeCatalog.mode(id: $0) }
-            vc?.showCleanupRecoveryScreen(for: game, mode: mode)
-        } else {
-            vc?.showGameSelectionScreen()
-        }
+        vc?.showGameSelectionScreen()
     }
 
     // MARK: - Operaciones
@@ -206,7 +199,7 @@ final class DavizinBridge {
             || mode.label.lowercased().contains("hybrid")
 
         guard useKexploitPath || Self.airLiftRouteAvailable else {
-            let message = "Offsets de kernel validados solo hasta iOS 26.0.x; agrega pairing AirLift para iOS \(iosVersion.major).\(iosVersion.minor)."
+            let message = "iOS \(iosVersion.major).\(iosVersion.minor) requiere pairing AirLift. Agrega el pairing desde Ajustes."
             NyxelActivityLog.record(message)
             DispatchQueue.main.async {
                 self.operationInFlight = false
@@ -358,16 +351,7 @@ final class DavizinBridge {
             vc?.setOperationState(.failed("NYX-006 — Ya hay una operación en curso."))
             return
         }
-        if operation == .inject && NyxelCleanupFlow.hasPendingWork {
-            vc?.setOperationState(.failed("Limpia sesión sí o sí antes de volver a inyectar."))
-            return
-        }
         if operation == .clean {
-            guard NyxelCleanupFlow.stage == .needsCleaning else {
-                vc?.setOperationState(.failed("No hay una limpieza pendiente que pueda confirmarse."))
-                return
-            }
-            if let pendingGame = NyxelCleanupFlow.game { selectedGame = pendingGame }
             operationInFlight = true
             executeAuthorizedOperation(.clean)
             return
@@ -419,7 +403,7 @@ final class DavizinBridge {
                 }
 
                 if !useKexploitPath {
-                    let message = "Offsets de kernel validados solo hasta iOS 26.0.x; no se ejecutó el exploit en iOS \(version.major).\(version.minor)."
+                    let message = "iOS \(version.major).\(version.minor) requiere pairing AirLift. Agrega el pairing desde Ajustes."
                     NyxelActivityLog.record(message)
                     DispatchQueue.main.async {
                         self.operationInFlight = false
