@@ -25,6 +25,11 @@ enum AppTheme {
     static var accentHot: UIColor { NyxelAppearanceStore.accentHot }
     static var accentDim: UIColor { NyxelAppearanceStore.accentDim }
 
+    static var readableAccent:  UIColor { accent }
+    static var readableSuccess: UIColor { success }
+    static var readableWarm:    UIColor { warm }
+    static var readableFailure: UIColor { failure }
+
     static var control: UIColor { card }
     static var separator: UIColor { hairline }
 
