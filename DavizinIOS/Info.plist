@@ -63,9 +63,14 @@
 		<string>audio</string>
 		<string>network-extension</string>
 	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Nyxel External necesita acceso a la red local para descubrir y vincular dispositivos mediante el protocolo Remote Pairing de iOS.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_remotepairing._tcp</string>
+		<string>_remotepairing-pairable-host._tcp</string>
+		<string>_aircardprobe._tcp</string>
+		<string>_3105airlift._tcp</string>
 	</array>
 	<key>MinimumOSVersion</key>
 	<string>16.0</string>

@@ -278,11 +278,27 @@ final class NyxelVPNView: UIView {
         supportNoteLabel.text = "Este panel aplica a las versiones compatibles indicadas. En iOS 27 se requiere un build verificado y completar el flujo de emparejamiento con túnel."
     }
 
+    private var vpnUnavailable: Bool {
+        let v = ProcessInfo.processInfo.operatingSystemVersion
+        return v.majorVersion >= 27 || !NixelVPNManager.shared.tunnelPluginPresent
+    }
+
     @objc private func refreshStatus() {
         DispatchQueue.main.async {
+            if self.vpnUnavailable {
+                self.statusLabel.text = "No disponible — usa Pairing"
+                self.statusLabel.textColor = AppTheme.secondaryText
+                self.statusDot.backgroundColor = AppTheme.tertiaryText
+                self.toggleButton.setTitle("No disponible", for: .normal)
+                self.toggleButton.isEnabled = false
+                self.toggleButton.alpha = 0.45
+                return
+            }
             let manager = NixelVPNManager.shared
             self.statusLabel.text = NixelVPNManager.statusText(manager.status)
             self.toggleButton.setTitle(manager.isActive ? "Desconectar" : "Conectar", for: .normal)
+            self.toggleButton.isEnabled = true
+            self.toggleButton.alpha = 1.0
 
             switch manager.status {
             case .connected:
@@ -302,6 +318,7 @@ final class NyxelVPNView: UIView {
     }
 
     @objc private func toggleConnection() {
+        guard !vpnUnavailable else { return }
         let manager = NixelVPNManager.shared
         if manager.isActive {
             manager.stop()
@@ -320,7 +337,7 @@ final class NyxelVPNView: UIView {
                 case .success:
                     self.refreshStatus()
                 case .failure(let error):
-                    NyxelActivityLog.record("iOS 27 connection setup failed: \(error.localizedDescription)")
+                    NyxelActivityLog.record("VPN connection setup failed: \(error.localizedDescription)")
                     self.statusLabel.text = "No se pudo conectar. Inténtalo de nuevo o revisa el estado del dispositivo."
                     self.statusLabel.textColor = AppTheme.readableFailure
                     self.statusDot.backgroundColor = AppTheme.readableFailure
@@ -491,7 +508,12 @@ final class NyxelVPNView: UIView {
         title.textColor = AppTheme.primaryText
 
         let subtitle = UILabel()
-        subtitle.text = "El túnel está limitado a las rutas RSD; Internet debe seguir por la red activa (Wi‑Fi o datos). Pairing y VPN son acciones separadas."
+        let v = ProcessInfo.processInfo.operatingSystemVersion
+        if v.majorVersion >= 27 {
+            subtitle.text = "En iOS 27+ la conexión VPN no está disponible en apps sideloaded. Usa el botón de Pairing para vincular el dispositivo mediante AirLift."
+        } else {
+            subtitle.text = "El túnel está limitado a las rutas RSD; Internet debe seguir por la red activa (Wi‑Fi o datos). Pairing y VPN son acciones separadas."
+        }
         subtitle.font = AppTheme.bodyFont()
         subtitle.textColor = AppTheme.secondaryText
         subtitle.numberOfLines = 0
