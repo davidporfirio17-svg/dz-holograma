@@ -37,7 +37,7 @@ struct HomeView: View {
     private var header: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("NYXEL EXTERNAL")
+                Text("NYXELHOLO")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
                     .tracking(-0.4)
                     .foregroundStyle(primary)

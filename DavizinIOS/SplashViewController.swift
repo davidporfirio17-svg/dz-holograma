@@ -28,7 +28,7 @@ final class SplashViewController: UIViewController {
         portraitView.transform = CGAffineTransform(scaleX: 0.90, y: 0.90)
         portraitView.translatesAutoresizingMaskIntoConstraints = false
 
-        wordLabel.text = "NYXEL EXTERNAL"
+        wordLabel.text = "NYXELHOLO"
         wordLabel.font = .systemFont(ofSize: 15, weight: .bold)
         wordLabel.textColor = AppTheme.primaryText
         wordLabel.textAlignment = .center

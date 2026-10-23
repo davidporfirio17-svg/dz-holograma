@@ -242,7 +242,7 @@ final class DavizinBridge {
             completion(false)
             return
         }
-        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Confirma para ejecutar Inject en Nyxel") { success, _ in
+        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Confirma para ejecutar Inject en NyxelHolo") { success, _ in
             DispatchQueue.main.async { completion(success) }
         }
     }

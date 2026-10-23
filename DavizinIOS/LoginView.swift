@@ -312,7 +312,7 @@ final class LoginView: UIView {
 			logoMark.layer.shadowOffset = .zero
 			logoMark.heightAnchor.constraint(equalToConstant: 30.0).isActive = true
 
-		titleLabel.text = "NYXEL EXTERNAL"
+		titleLabel.text = "NYXELHOLO"
         titleLabel.textColor = AppTheme.primaryText
         titleLabel.font = AppTheme.titleFont()
 		titleLabel.textAlignment = .center

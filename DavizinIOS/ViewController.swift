@@ -321,7 +321,7 @@ final class ViewController: UIViewController {
         animatedBackgroundView.stopAnimating()
         animatedBackgroundView.isHidden = true
         setBottomNavigation(visible: false)
-        headerView.title = "Nyxel External"
+        headerView.title = "NyxelHolo"
         headerView.showsBackButton = false
         headerView.showsAvatarButton = false
 

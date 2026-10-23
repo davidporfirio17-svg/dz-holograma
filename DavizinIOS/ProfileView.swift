@@ -159,7 +159,7 @@ final class ProfileView: UIView {
         countValueLabel.text = "\(count)"
         let next = rankTiers.first(where: { $0.minCount > count })?.minCount
         rankProgressLabel.text = next.map { "Progreso de rango: \(count)/\($0)" } ?? "Progreso de rango: máximo alcanzado"
-        deviceLabel.text = "NYXEL EXTERNAL\n\(KeyValidator.getDeviceModel()) • \(NyxelSupportPolicy.currentSystemDescription)"
+        deviceLabel.text = "NYXELHOLO\n\(KeyValidator.getDeviceModel()) • \(NyxelSupportPolicy.currentSystemDescription)"
         themeControl.selectedSegmentIndex = NyxelAppearanceStore.colorMode.rawValue
         appearanceControl.selectedSegmentIndex = NyxelAppearanceStore.theme.rawValue
         biometricSwitch.isOn = UserDefaults.standard.bool(forKey: "nyxel.biometric.enabled")
@@ -204,7 +204,7 @@ final class ProfileView: UIView {
         avatarImageView.layer.addSublayer(progressTrack)
         avatarImageView.layer.addSublayer(progressRing)
 
-        nameLabel.text = "NYXEL EXTERNAL"
+        nameLabel.text = "NYXELHOLO"
         nameLabel.font = AppTheme.titleFont(19)
         nameLabel.textColor = AppTheme.primaryText
         rankLabel.font = .systemFont(ofSize: 10, weight: .semibold)
