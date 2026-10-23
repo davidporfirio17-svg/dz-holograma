@@ -70,8 +70,12 @@ final class NixelVPNManager: NSObject {
             switch result {
             case .failure(let error): completion(.failure(error))
             case .success:
-                do { try self.manager?.connection.startVPNTunnel(); completion(.success(())) }
-                catch { self.lastError = error; completion(.failure(error)) }
+                self.manager?.loadFromPreferences { [weak self] error in
+                    guard let self else { return }
+                    if let error { self.lastError = error; completion(.failure(error)); return }
+                    do { try self.manager?.connection.startVPNTunnel(); completion(.success(())) }
+                    catch { self.lastError = error; completion(.failure(error)) }
+                }
             }
         }
     }

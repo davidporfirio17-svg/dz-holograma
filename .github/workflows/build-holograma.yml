@@ -141,6 +141,9 @@ jobs:
           -emit-executable \
           -o "$APPEX_DIR/ExternalTunnel" \
           -application-extension \
+          -Xlinker -e -Xlinker _NSExtensionMain \
+          -framework Foundation \
+          -framework NetworkExtension \
           ExternalTunnel/PacketTunnelProvider.swift
 
         cp ExternalTunnel/Info.plist "$APPEX_DIR/Info.plist"
