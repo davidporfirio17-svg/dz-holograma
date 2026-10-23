@@ -159,17 +159,17 @@ final class DavizinBridge {
     }
 
     private func consumeOneTimeMode(mode: DavizinMode, key: String, hwid: String, result: InjectorResult) {
-        guard let url = URL(string: "https://dz-holograma.davidporfirio17.workers.dev/consume-mode") else {
+        guard let url = NyxelStringShield.workerURL(NyxelStringShield.workerHost, path: NyxelStringShield.pathConsumeMode) else {
             operationInFlight = false
             vc?.setOperationState(.failed("NYX-002 — No se pudo confirmar la operación con el Worker."))
             return
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(NyxelStringShield.contentTypeJSON, forHTTPHeaderField: "Content-Type")
         KeyValidator.applySecurityHeaders(to: &request)
         request.httpBody = try? JSONSerialization.data(withJSONObject: ["key": key, "hwid": hwid, "mode": mode.id])
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+        NyxelCertPinning.shared.session.dataTask(with: request) { [weak self] data, response, _ in
             let ok = (response as? HTTPURLResponse)?.statusCode == 200 && ((try? JSONSerialization.jsonObject(with: data ?? Data()) as? [String: Any])?["success"] as? Bool == true)
             DispatchQueue.main.async {
                 guard let self = self else { return }

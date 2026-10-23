@@ -69,10 +69,10 @@ class KeyValidator {
 
     /// Añade identidad de instalación, build y sesión a cada solicitud sensible.
     static func applySecurityHeaders(to request: inout URLRequest) {
-        request.setValue(getInstallationID(), forHTTPHeaderField: "X-DZ-Installation")
-        request.setValue(getAppBuild(), forHTTPHeaderField: "X-DZ-Build")
+        request.setValue(getInstallationID(), forHTTPHeaderField: NyxelStringShield.headerInstallation)
+        request.setValue(getAppBuild(), forHTTPHeaderField: NyxelStringShield.headerBuild)
         if let session = currentSessionToken, !session.isEmpty {
-            request.setValue(session, forHTTPHeaderField: "X-DZ-Session")
+            request.setValue(session, forHTTPHeaderField: NyxelStringShield.headerSession)
         }
     }
 
@@ -108,8 +108,7 @@ class KeyValidator {
             return
         }
         
-        let serverURL = "https://dz-holograma.davidporfirio17.workers.dev"
-        guard let url = URL(string: "\(serverURL)/check") else {
+        guard let url = NyxelStringShield.workerURL(NyxelStringShield.workerHost, path: NyxelStringShield.pathCheck) else {
             completion(false, "URL inválida", 0, nil)
             return
         }
@@ -117,7 +116,7 @@ class KeyValidator {
 			var request = URLRequest(url: url)
 			request.httpMethod = "POST"
 			request.cachePolicy = .reloadIgnoringLocalCacheData
-			request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+			request.setValue(NyxelStringShield.contentTypeJSON, forHTTPHeaderField: "Content-Type")
 			request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
 			request.timeoutInterval = 15
         applySecurityHeaders(to: &request)
@@ -142,7 +141,7 @@ class KeyValidator {
 
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        NyxelCertPinning.shared.session.dataTask(with: request) { data, response, error in
             DispatchQueue.main.async {
 				if let error = error {
 					NyxelRemoteConfigStore.recordFailure("\(NyxelErrorCode.workerUnavailable) — \(error.localizedDescription)")

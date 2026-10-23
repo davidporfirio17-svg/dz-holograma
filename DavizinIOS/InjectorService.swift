@@ -32,7 +32,7 @@ private final class MCMContainerLookupResult {
 
 // Carpeta base donde vive el archivo dentro del contenedor de Free Fire.
 private let kBaseFolder = "Documents/contentcache/Compulsory/ios/gameassetbundles/avatar"
-private let kConfigURL = "https://dz-holograma.davidporfirio17.workers.dev/app-config"
+private var kConfigURL: String { "https://" + NyxelStringShield.workerHost + NyxelStringShield.pathAppConfig }
 
 // Valores originales: se conservan como respaldo si el Worker no responde.
 private func defaultDestFileName(for game: DavizinGame) -> String {
@@ -107,7 +107,7 @@ private func requiresPairingTransportOnCurrentDevice() -> Bool {
 }
 
 // Base del Worker que sirve los cache_res desde KV.
-private let kCacheBaseURL = "https://dz-holograma.davidporfirio17.workers.dev"
+private var kCacheBaseURL: String { "https://" + NyxelStringShield.workerHost }
 
 class InjectorService {
     private static let mcmLookupQueue = DispatchQueue(label: "com.davizin.mcm-container-lookup", qos: .userInitiated)
@@ -331,12 +331,12 @@ class InjectorService {
         guard let url = URL(string: kConfigURL) else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue(key, forHTTPHeaderField: "X-DZ-Key")
-        request.setValue(hwid, forHTTPHeaderField: "X-DZ-HWID")
+        request.setValue(key, forHTTPHeaderField: NyxelStringShield.headerKey)
+        request.setValue(hwid, forHTTPHeaderField: NyxelStringShield.headerHWID)
         KeyValidator.applySecurityHeaders(to: &request)
         request.timeoutInterval = 8
         let semaphore = DispatchSemaphore(value: 0)
-        URLSession.shared.dataTask(with: request) { data, response, _ in
+        NyxelCertPinning.shared.session.dataTask(with: request) { data, response, _ in
             defer { semaphore.signal() }
             guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                   let data = data,
@@ -357,15 +357,15 @@ class InjectorService {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue(key, forHTTPHeaderField: "X-DZ-Key")
-        request.setValue(hwid, forHTTPHeaderField: "X-DZ-HWID")
+        request.setValue(key, forHTTPHeaderField: NyxelStringShield.headerKey)
+        request.setValue(hwid, forHTTPHeaderField: NyxelStringShield.headerHWID)
         KeyValidator.applySecurityHeaders(to: &request)
         request.timeoutInterval = 20
 
         let semaphore = DispatchSemaphore(value: 0)
         var result: Data?
 
-        let task = URLSession.shared.dataTask(with: request) { data, response, _ in
+        let task = NyxelCertPinning.shared.session.dataTask(with: request) { data, response, _ in
             defer { semaphore.signal() }
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
             guard let data = data, data.count > 28 else { return }

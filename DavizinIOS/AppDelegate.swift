@@ -7,7 +7,9 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        // Initialize Nyxel logging and system detection
+        NyxelAntiTamper.denyPtraceAttach()
+        _ = NyxelAntiTamper.inspect()
+
         UNUserNotificationCenter.current().delegate = self
         application.logNyxelLaunchInfo()
         return true
