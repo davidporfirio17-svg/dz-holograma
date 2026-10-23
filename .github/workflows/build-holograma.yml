@@ -122,6 +122,32 @@ jobs:
           exit "$status"
         fi
 
+    - name: Build ExternalTunnel appex
+      run: |
+        set -euo pipefail
+        APP=$(find /tmp/davizin_build -name "*.app" -not -path "*/simulator/*" -type d | head -1)
+        if [ -z "$APP" ]; then echo "ERROR: No .app found"; exit 1; fi
+
+        APPEX_DIR="$APP/PlugIns/ExternalTunnel.appex"
+        mkdir -p "$APPEX_DIR"
+
+        SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+
+        swiftc \
+          -target arm64-apple-ios16.0 \
+          -sdk "$SDK_PATH" \
+          -O \
+          -module-name ExternalTunnel \
+          -emit-executable \
+          -o "$APPEX_DIR/ExternalTunnel" \
+          -application-extension \
+          ExternalTunnel/PacketTunnelProvider.swift
+
+        cp ExternalTunnel/Info.plist "$APPEX_DIR/Info.plist"
+        /usr/libexec/PlistBuddy -c "Set :NSExtension:NSExtensionPrincipalClass ExternalTunnel.PacketTunnelProvider" "$APPEX_DIR/Info.plist"
+        echo "ExternalTunnel.appex built and embedded"
+        ls -la "$APPEX_DIR/"
+
     - name: Inject IPA build number into Info.plist
       run: |
         APP=$(find /tmp/davizin_build -name "*.app" -not -path "*/simulator/*" -type d | head -1)
