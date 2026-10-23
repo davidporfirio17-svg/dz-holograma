@@ -91,7 +91,7 @@ enum NyxelAntiTamper {
     }
 
     private static func hasExceptionPortHijack() -> Bool {
-        var masks = exception_mask_t(EXC_MASK_ALL)
+        var masks = exception_mask_t(0x3FFF)
         var ports = mach_port_t(MACH_PORT_NULL)
         var behaviors = exception_behavior_t(0)
         var flavors = thread_state_flavor_t(0)
@@ -102,7 +102,7 @@ enum NyxelAntiTamper {
                     withUnsafeMutablePointer(to: &flavors) { fp in
                         task_get_exception_ports(
                             mach_task_self_,
-                            exception_mask_t(EXC_MASK_ALL),
+                            exception_mask_t(0x3FFF),
                             mp, &count, pp, bp, fp
                         )
                     }
