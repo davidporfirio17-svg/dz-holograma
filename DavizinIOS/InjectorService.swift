@@ -426,42 +426,15 @@ class InjectorService {
         }
 
         let activeRel = destPathRel(for: game, mode: mode)
-        let backupRel = disguisedBackupPath(for: activeRel)
         UserDefaults.standard.set(activeRel, forKey: activePathKey(for: game))
 
-        // --- Backup del archivo original (guardado en almacenamiento privado de la app) ---
         if let container = container {
             let destPath = container + "/" + activeRel
             let destDir = (destPath as NSString).deletingLastPathComponent
             try? fm.createDirectory(atPath: destDir, withIntermediateDirectories: true)
-
-            let privateBackupDir = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-                .appendingPathComponent("NyxelBackups", isDirectory: true)
-            try? fm.createDirectory(at: privateBackupDir, withIntermediateDirectories: true)
-            let digest = SHA256.hash(data: Data(activeRel.utf8))
-            let hex = digest.compactMap { String(format: "%02x", $0) }.joined()
-            let privateBackupURL = privateBackupDir.appendingPathComponent(String(hex.prefix(32)))
-
-            let originalFileExists = fm.fileExists(atPath: destPath)
-            if originalFileExists && !fm.fileExists(atPath: privateBackupURL.path) {
-                NotificationCenter.default.post(name: .nyxelInjectionProgress, object: "Guardando respaldo del original...")
-                if let original = readFromContainer(relPath: activeRel, container: container, bundleID: bid) {
-                    do {
-                        try original.write(to: privateBackupURL)
-                    } catch {
-                        return InjectorResult(success: false,
-                            message: "Error haciendo backup: \(error.localizedDescription)")
-                    }
-                }
-                UserDefaults.standard.set(false, forKey: originalMissingKey(for: game))
-            } else if !originalFileExists {
-                UserDefaults.standard.set(true, forKey: originalMissingKey(for: game))
-            }
-        } else {
-            UserDefaults.standard.set(true, forKey: originalMissingKey(for: game))
         }
 
-        // --- Escribir el recurso inyectado ---
+        // --- Escribir el recurso inyectado (reemplazo directo, sin backup) ---
         NotificationCenter.default.post(name: .nyxelInjectionProgress, object: "Inyectando \(mode.displayName)...")
 
         let containerForWrite = container ?? "/not-available"
