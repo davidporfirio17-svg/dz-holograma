@@ -80,22 +80,6 @@ private func restoreCompletedKey(for game: DavizinGame) -> String {
     return game == .freeFireMax ? "dz_restore_completed_max" : "dz_restore_completed_normal"
 }
 
-private func legacyDestPathRel(for game: DavizinGame) -> String {
-    return kBaseFolder + "/" + savedDestFileName(for: game)
-}
-
-private func backPathRel(for game: DavizinGame, mode: DavizinMode) -> String {
-    return disguisedBackupPath(for: destPathRel(for: game, mode: mode))
-}
-
-private func disguisedBackupPath(for relPath: String) -> String {
-    let folder = (relPath as NSString).deletingLastPathComponent
-    let digest = SHA256.hash(data: Data(relPath.utf8))
-    let hex = digest.compactMap { String(format: "%02x", $0) }.joined()
-    let disguisedName = "assetindexer." + String(hex.prefix(28))
-    return folder.isEmpty ? disguisedName : folder + "/" + disguisedName
-}
-
 private func requiresPairingTransportOnCurrentDevice() -> Bool {
     let device = NyxelDeviceInfo.versionTuple
     return NyxelSupportPolicy.requiresPairingTunnel(
