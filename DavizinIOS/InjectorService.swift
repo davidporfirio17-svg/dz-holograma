@@ -429,27 +429,28 @@ class InjectorService {
         let backupRel = disguisedBackupPath(for: activeRel)
         UserDefaults.standard.set(activeRel, forKey: activePathKey(for: game))
 
-        // --- Backup del archivo original (si existe) ---
+        // --- Backup del archivo original (guardado en almacenamiento privado de la app) ---
         if let container = container {
             let destPath = container + "/" + activeRel
-            let backupPath = container + "/" + backupRel
             let destDir = (destPath as NSString).deletingLastPathComponent
-
             try? fm.createDirectory(atPath: destDir, withIntermediateDirectories: true)
 
+            let privateBackupDir = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+                .appendingPathComponent("NyxelBackups", isDirectory: true)
+            try? fm.createDirectory(at: privateBackupDir, withIntermediateDirectories: true)
+            let digest = SHA256.hash(data: Data(activeRel.utf8))
+            let hex = digest.compactMap { String(format: "%02x", $0) }.joined()
+            let privateBackupURL = privateBackupDir.appendingPathComponent(String(hex.prefix(32)))
+
             let originalFileExists = fm.fileExists(atPath: destPath)
-            if originalFileExists && !fm.fileExists(atPath: backupPath) {
+            if originalFileExists && !fm.fileExists(atPath: privateBackupURL.path) {
                 NotificationCenter.default.post(name: .nyxelInjectionProgress, object: "Guardando respaldo del original...")
                 if let original = readFromContainer(relPath: activeRel, container: container, bundleID: bid) {
-                    let writeErr = writeToContainer(original, relPath: backupRel, container: container, bundleID: bid)
-                    if let writeErr = writeErr {
-                        NyxelActivityLog.record("DIAG backup write fallo: \(writeErr.localizedDescription); intentando directo")
-                        do {
-                            try original.write(to: URL(fileURLWithPath: backupPath))
-                        } catch {
-                            return InjectorResult(success: false,
-                                message: "Error haciendo backup: \(error.localizedDescription)")
-                        }
+                    do {
+                        try original.write(to: privateBackupURL)
+                    } catch {
+                        return InjectorResult(success: false,
+                            message: "Error haciendo backup: \(error.localizedDescription)")
                     }
                 }
                 UserDefaults.standard.set(false, forKey: originalMissingKey(for: game))
