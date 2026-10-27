@@ -1448,7 +1448,7 @@ document.addEventListener('click',e=>{const a=e.target.closest('a[onclick*="conf
 /* KEY_FILTER_UI_V1 */
 (function(){if(!document.title.startsWith('Keys'))return;const host=document.querySelector('.ph .acts');if(!host||document.getElementById('key-filter-actions'))return;const box=document.createElement('div');box.id='key-filter-actions';box.className='acts';box.style.cssText='width:100%;margin-top:4px;justify-content:flex-end';box.innerHTML='<a class="btn b-e b-sm" href="/keys?status=expired">Aparecer todas las expiradas</a><a class="btn b-ok b-sm" href="/keys?status=active">Aparecer todas las activas</a><a class="btn b-w b-sm" href="/keys?status=unused">Aparecer todas las que no han sido usadas</a>';host.parentNode.appendChild(box)})();
 document.addEventListener('keydown',e=>{if(e.key==='Escape')toggleNav(false)});document.querySelectorAll('.sb-lnk').forEach(a=>a.addEventListener('click',()=>toggleNav(false)));
-</script></body></html>`,{headers:{'Content-Type':'text/html;charset=UTF-8','Cache-Control':ses?'private, no-store':'public, max-age=30, s-maxage=30'}});
+</script></body></html>`,{headers:{'Content-Type':'text/html;charset=UTF-8','Cache-Control':ses?'private, no-cache, no-store, must-revalidate, max-age=0':'public, max-age=30, s-maxage=30','Pragma':ses?'no-cache':'','Expires':ses?'0':''}});
 }
 
 function loginPg(err=false){
