@@ -1401,7 +1401,9 @@ ${sa?`<div class="sb-sec">Administración</div>
 <a href="/bans" class="sb-lnk ${title==='Bans'?'on':''}"><span class="ic">⊘</span>Bans</a>
 <a href="/sessions" class="sb-lnk ${title==='Sesiones'?'on':''}"><span class="ic">◎</span>Sesiones</a>
 <a href="/activity" class="sb-lnk ${title==='Actividad'?'on':''}"><span class="ic">≡</span>Actividad</a>
-<a href="/anuncio" class="sb-lnk ${title==='Anuncio'?'on':''}"><span class="ic">📢</span>Anuncio Global</a><a href="/tiempo" class="sb-lnk ${title==='Tiempo'?'on':''}"><span class="ic">⏳</span>Agregar Tiempo</a><a href="/maintenance" class="sb-lnk ${title==='Sistema'?'on':''}"><span class="ic">⚙</span>Sistema</a><a href="/app-builds" class="sb-lnk ${title==='Builds permitidos'?'on':''}"><span class="ic">▣</span>Builds permitidos</a>`:''}
+<a href="/anuncio" class="sb-lnk ${title==='Anuncio'?'on':''}"><span class="ic">📢</span>Anuncio Global</a><a href="/tiempo" class="sb-lnk ${title==='Tiempo'?'on':''}"><span class="ic">⏳</span>Agregar Tiempo</a><a href="/maintenance" class="sb-lnk ${title==='Sistema'?'on':''}"><span class="ic">⚙</span>Sistema</a><a href="/app-builds" class="sb-lnk ${title==='Builds permitidos'?'on':''}"><span class="ic">▣</span>Builds permitidos</a>
+<div class="sb-sec">Contenido</div>
+<a href="/avatarfiles" class="sb-lnk ${title==='Avatar Files'?'on':''}"><span class="ic">🎭</span>Avatar Files</a>`:''}
 </nav>
 <div class="sb-bottom"><div class="sb-user"><div class="sb-avatar">${init}</div><div><div class="sb-uname">${me}</div><div class="sb-urole">${sa?'Superadmin':'Vendedor'}</div></div></div><a href="/logout" class="sb-out">↗ Cerrar sesión</a></div>
 </aside>`:'';
