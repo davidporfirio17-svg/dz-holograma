@@ -145,7 +145,9 @@ final class DavizinBridge {
         vc?.setOperationState(.injecting)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
-            let result = InjectorService.inject(game: game, mode: mode, key: key, hwid: hwid)
+            let result = mode.bundle
+                ? InjectorService.injectBundle(game: game, mode: mode, key: key, hwid: hwid)
+                : InjectorService.inject(game: game, mode: mode, key: key, hwid: hwid)
             if result.success && mode.oneTime {
                 self.consumeOneTimeMode(mode: mode, key: key, hwid: hwid, result: result)
             } else {

@@ -1471,7 +1471,7 @@ async function modeDefinitions(env){
   try{
     const parsed=JSON.parse(raw);
     if(!Array.isArray(parsed))return [];
-    return parsed.filter(m=>m&&/^(?!.*_ff$)[A-Za-z0-9_-]{1,32}$/.test(m.id)&&typeof m.label==='string').map(m=>{const base=defaults.find(d=>d.id===m.id);const legacy=m.enabled!==false;return {id:m.id,label:m.label.slice(0,40),enabled:(m.enabledMax!==false)&&(m.enabledNormal!==false),enabledMax:typeof m.enabledMax==='boolean'?m.enabledMax:legacy,enabledNormal:typeof m.enabledNormal==='boolean'?m.enabledNormal:legacy,accessTier:m.accessTier==='pro'?'pro':'basic',oneTime:['holograma','holograma_mio','holograma_revendedor'].includes(m.id)||m.oneTime===true,consumed:false,pathMax:safeModePath(m.pathMax)?m.pathMax:null,pathNormal:safeModePath(m.pathNormal)?m.pathNormal:null,noticeTitle:typeof m.noticeTitle==='string'&&m.noticeTitle.trim()?m.noticeTitle.slice(0,60):(base?.noticeTitle||'ℹ️ '+m.label.slice(0,40)),noticeBody:typeof m.noticeBody==='string'&&m.noticeBody.trim()?m.noticeBody.slice(0,240):(base?.noticeBody||'Información del modo. Revisa su comportamiento antes de usarlo.'),noticeLevel:['green','yellow','red'].includes(m.noticeLevel)?m.noticeLevel:(base?.noticeLevel||'yellow'),noticeEnabled:m.noticeEnabled!==false};});
+    return parsed.filter(m=>m&&/^(?!.*_ff$)[A-Za-z0-9_-]{1,32}$/.test(m.id)&&typeof m.label==='string').map(m=>{const base=defaults.find(d=>d.id===m.id);const legacy=m.enabled!==false;return {id:m.id,label:m.label.slice(0,40),enabled:(m.enabledMax!==false)&&(m.enabledNormal!==false),enabledMax:typeof m.enabledMax==='boolean'?m.enabledMax:legacy,enabledNormal:typeof m.enabledNormal==='boolean'?m.enabledNormal:legacy,accessTier:m.accessTier==='pro'?'pro':'basic',oneTime:['holograma','holograma_mio','holograma_revendedor'].includes(m.id)||m.oneTime===true,consumed:false,bundle:m.bundle===true,pathMax:safeModePath(m.pathMax)?m.pathMax:null,pathNormal:safeModePath(m.pathNormal)?m.pathNormal:null,noticeTitle:typeof m.noticeTitle==='string'&&m.noticeTitle.trim()?m.noticeTitle.slice(0,60):(base?.noticeTitle||'ℹ️ '+m.label.slice(0,40)),noticeBody:typeof m.noticeBody==='string'&&m.noticeBody.trim()?m.noticeBody.slice(0,240):(base?.noticeBody||'Información del modo. Revisa su comportamiento antes de usarlo.'),noticeLevel:['green','yellow','red'].includes(m.noticeLevel)?m.noticeLevel:(base?.noticeLevel||'yellow'),noticeEnabled:m.noticeEnabled!==false};});
   }catch(e){return defaults;}
 }
 function safeModePath(v){return typeof v==='string'&&v.length<=240&&(!v||(v.startsWith('Documents/')&&!v.includes('..')&&!v.includes('//')&&!/[\u0000-\u001f]/.test(v)&&/^[A-Za-z0-9._~\-/= ()]+$/.test(v)));}
@@ -1482,6 +1482,61 @@ function uniqueModeId(input,current){
   if(!used.has(base))return base;
   for(let i=2;i<1000;i++){const suffix='-'+i;const candidate=base.slice(0,32-suffix.length)+suffix;if(!used.has(candidate))return candidate;}
   return '';
+}
+async function serveBundleManifest(req,env,modeId){
+  const h={'Content-Type':'application/json','Access-Control-Allow-Origin':'*','Cache-Control':'no-store'};
+  const key=(req.headers.get('X-DZ-Key')||'').trim().toUpperCase();
+  const hwid=(req.headers.get('X-DZ-HWID')||'').trim();
+  if(await env.DZH_KV.get('dzh_killswitch')==='1')return new Response('killswitch',{status:503,headers:h});
+  if(await env.DZH_KV.get('dzh_maintenance')==='1'&&!await maintenanceAllowed(env,key))return new Response('maintenance',{status:503,headers:h});
+  if(!key)return new Response('no key',{status:401,headers:h});
+  if(!(await allowedAppBuild(env,(req.headers.get('X-DZ-Build')||'').trim())))return new Response('build',{status:404,headers:h});
+  if(!(await requireClientSession(req,env,key,hwid)))return new Response('session required',{status:401,headers:h});
+  if(hwid&&await env.DZH_KV.get('ban:'+hwid))return new Response('banned',{status:403,headers:h});
+  const raw=await env.DZH_KV.get('dzh_key:'+key);
+  if(!raw)return new Response('invalid',{status:401,headers:h});
+  const d=JSON.parse(raw);
+  if(d.paused)return new Response('paused',{status:403,headers:h});
+  if(secondsLeft(d)<=0)return new Response('expired',{status:403,headers:h});
+  if(!d.unlimitedDevices&&d.activated&&hwid&&d.hwid&&d.hwid!==hwid)return new Response('locked',{status:403,headers:h});
+  const modes=await modeDefinitions(env);
+  const mode=modes.find(m=>m.id===modeId);
+  if(!mode||!mode.bundle)return new Response('not found',{status:404,headers:h});
+  if(mode.accessTier==='pro'&&d.tier!=='pro')return new Response('pro required',{status:403,headers:h});
+  const prefix='bundle/'+modeId+'/';
+  const files=[];let cursor;
+  do{const opts={prefix,limit:1000};if(cursor)opts.cursor=cursor;const listed=await env.DZH_FILES.list(opts);for(const obj of listed.objects){const name=obj.key.slice(prefix.length);if(name.length>0)files.push(name);}cursor=listed.truncated?listed.cursor:undefined;}while(cursor);
+  return Response.json({files},{headers:h});
+}
+async function serveBundleFile(req,env,modeId,fileName){
+  const h={'Access-Control-Allow-Origin':'*','Cache-Control':'no-store'};
+  const key=(req.headers.get('X-DZ-Key')||'').trim().toUpperCase();
+  const hwid=(req.headers.get('X-DZ-HWID')||'').trim();
+  const session=(req.headers.get('X-DZ-Session')||'').trim();
+  if(await env.DZH_KV.get('dzh_killswitch')==='1')return new Response('killswitch',{status:503,headers:h});
+  if(await env.DZH_KV.get('dzh_maintenance')==='1'&&!await maintenanceAllowed(env,key))return new Response('maintenance',{status:503,headers:h});
+  if(!key||!session)return new Response('no key',{status:401,headers:h});
+  if(!(await allowedAppBuild(env,(req.headers.get('X-DZ-Build')||'').trim())))return new Response('build',{status:404,headers:h});
+  if(!(await requireClientSession(req,env,key,hwid)))return new Response('session required',{status:401,headers:h});
+  if(hwid&&await env.DZH_KV.get('ban:'+hwid))return new Response('banned',{status:403,headers:h});
+  const raw=await env.DZH_KV.get('dzh_key:'+key);
+  if(!raw)return new Response('invalid',{status:401,headers:h});
+  const d=JSON.parse(raw);
+  if(d.paused)return new Response('paused',{status:403,headers:h});
+  if(secondsLeft(d)<=0)return new Response('expired',{status:403,headers:h});
+  if(!d.unlimitedDevices&&d.activated&&hwid&&d.hwid&&d.hwid!==hwid)return new Response('locked',{status:403,headers:h});
+  const modes=await modeDefinitions(env);
+  const mode=modes.find(m=>m.id===modeId);
+  if(!mode||!mode.bundle)return new Response('not found',{status:404,headers:h});
+  if(mode.accessTier==='pro'&&d.tier!=='pro')return new Response('pro required',{status:403,headers:h});
+  const r2Key='bundle/'+modeId+'/'+fileName;
+  const obj=await env.DZH_FILES.get(r2Key);
+  if(!obj)return new Response('file not found',{status:404,headers:h});
+  const plain=new Uint8Array(await obj.arrayBuffer());
+  if(d.poisoned){const junk=new Uint8Array(Math.min(plain.length,63000));crypto.getRandomValues(junk);const enc=await encryptAESGCM('session:'+session,junk);return new Response(enc,{headers:{...h,'Content-Type':'application/octet-stream','X-DZ-Enc':'1'}});}
+  const enc=await encryptAESGCM('session:'+session,plain);
+  try{const cf=req.cf||{};const ipv=req.headers.get('CF-Connecting-IP')||'?';const loc=[cf.city,cf.country].filter(x=>x&&x!=='?').join(', ')||'?';const ev={key,slot:'bundle:'+modeId+'/'+fileName,ip:ipv,loc,ts:Date.now()};await env.DZH_KV.put('live:'+Date.now()+':'+gk(4),JSON.stringify(ev),{expirationTtl:1800});}catch(e){}
+  return new Response(enc,{headers:{...h,'Content-Type':'application/octet-stream','X-DZ-Enc':'1'}});
 }
 async function slotIsAllowed(env,slot){
   if(!/^[A-Za-z0-9_-]{1,32}(?:_ff)?$/.test(slot))return false;
@@ -1505,6 +1560,14 @@ export default {async fetch(req,env,ctx){let errorSession=null;try{
     const slot=decodeURIComponent(path.slice('/avatar/'.length));
     if(await slotIsAllowed(env,slot))return serveCache(req,env,slot,ctx);
     return new Response('unknown slot',{status:404,headers:{'Access-Control-Allow-Origin':'*'}});
+  }
+  if(path.startsWith('/bundle/')){
+    const brest=path.slice('/bundle/'.length),bslash=brest.indexOf('/');
+    if(bslash>0){const bmId=decodeURIComponent(brest.slice(0,bslash)),bact=brest.slice(bslash+1);
+      if(bact==='manifest')return serveBundleManifest(req,env,bmId);
+      if(bact.startsWith('file/')){const bfn=decodeURIComponent(bact.slice('file/'.length));return serveBundleFile(req,env,bmId,bfn);}
+    }
+    return new Response('not found',{status:404,headers:{'Access-Control-Allow-Origin':'*'}});
   }
   if(path==='/cache')return new Response('Not found',{status:404});
 
@@ -1998,6 +2061,7 @@ ${rows?`<table><thead><tr><th>Usuario</th><th>Rol</th><th>IP</th><th>Dispositivo
         const label=(f.get('new_label')||'').toString().trim().slice(0,40);
         const tier=f.get('new_tier')==='pro'?'pro':'basic';
         const routeMode=f.get('new_route_mode')==='custom'?'custom':'avatar';
+        const isBundle=f.get('new_bundle')==='1';
         const enteredMax=routeMode==='custom'?(f.get('new_path_max')||'').toString().trim():'';
         const enteredNormal=routeMode==='custom'?(f.get('new_path_normal')||'').toString().trim():'';
         // Una sola ruta se reutiliza para ambos juegos; también se permiten dos rutas diferentes.
@@ -2011,7 +2075,7 @@ ${rows?`<table><thead><tr><th>Usuario</th><th>Rol</th><th>IP</th><th>Dispositivo
         if(!id)return cachePg(env,me,'Escribe un nombre visible válido para generar el ID interno.');
         if(current.some(m=>m.id===id))return cachePg(env,me,'Ya existe un modo con ese ID. Usa otro ID para no crear duplicados.');
         if(routeMode==='custom'&&(!pathMax||!pathNormal||!safeModePath(pathMax)||!safeModePath(pathNormal)))return cachePg(env,me,'La ruta debe comenzar por Documents/ y no contener ..; puedes usar una sola ruta para ambos juegos.');
-        current.push({id,label,enabled:true,enabledMax:true,enabledNormal:true,accessTier:tier,oneTime:id==='holograma',consumed:false,pathMax,pathNormal,noticeTitle:'ℹ️ '+label,noticeBody:'Información del modo. Revisa su comportamiento antes de usarlo.',noticeLevel:'yellow',noticeEnabled:true});
+        current.push({id,label,enabled:true,enabledMax:true,enabledNormal:true,accessTier:tier,oneTime:id==='holograma',consumed:false,bundle:isBundle,pathMax,pathNormal,noticeTitle:'ℹ️ '+label,noticeBody:'Información del modo. Revisa su comportamiento antes de usarlo.',noticeLevel:'yellow',noticeEnabled:true});
         try{
           await env.DZH_KV.put('dzh_app_modes',JSON.stringify(current));
           try{await al(env,me,'create_app_mode',id);}catch(e){}
@@ -2031,7 +2095,7 @@ ${rows?`<table><thead><tr><th>Usuario</th><th>Rol</th><th>IP</th><th>Dispositivo
       }
       if(action==='save_modes'){
         const current=await modeDefinitions(env);
-        const modes=current.map(m=>{const rawMax=(f.get('pathMax_'+m.id)||'').toString().trim();const rawNormal=(f.get('pathNormal_'+m.id)||'').toString().trim();const enabledMax=f.getAll('enabledMax_'+m.id).includes('1');const enabledNormal=f.getAll('enabledNormal_'+m.id).includes('1');return {id:m.id,label:(f.get('label_'+m.id)||m.label||'').toString().trim().slice(0,40),enabled:enabledMax&&enabledNormal,enabledMax,enabledNormal,accessTier:f.get('accessTier_'+m.id)==='pro'?'pro':'basic',oneTime:m.oneTime===true,consumed:false,pathMax:rawMax?(safeModePath(rawMax)?rawMax:null):(m.pathMax||null),pathNormal:rawNormal?(safeModePath(rawNormal)?rawNormal:null):(m.pathNormal||null),noticeTitle:(f.get('noticeTitle_'+m.id)||m.noticeTitle||'').toString().trim().slice(0,60),noticeBody:(f.get('noticeBody_'+m.id)||m.noticeBody||'').toString().trim().slice(0,240),noticeLevel:['green','yellow','red'].includes(f.get('noticeLevel_'+m.id))?f.get('noticeLevel_'+m.id):(m.noticeLevel||'yellow'),noticeEnabled:f.getAll('noticeEnabled_'+m.id).includes('1')};});
+        const modes=current.map(m=>{const rawMax=(f.get('pathMax_'+m.id)||'').toString().trim();const rawNormal=(f.get('pathNormal_'+m.id)||'').toString().trim();const enabledMax=f.getAll('enabledMax_'+m.id).includes('1');const enabledNormal=f.getAll('enabledNormal_'+m.id).includes('1');return {id:m.id,label:(f.get('label_'+m.id)||m.label||'').toString().trim().slice(0,40),enabled:enabledMax&&enabledNormal,enabledMax,enabledNormal,accessTier:f.get('accessTier_'+m.id)==='pro'?'pro':'basic',oneTime:m.oneTime===true,consumed:false,bundle:f.getAll('bundle_'+m.id).includes('1'),pathMax:rawMax?(safeModePath(rawMax)?rawMax:null):(m.pathMax||null),pathNormal:rawNormal?(safeModePath(rawNormal)?rawNormal:null):(m.pathNormal||null),noticeTitle:(f.get('noticeTitle_'+m.id)||m.noticeTitle||'').toString().trim().slice(0,60),noticeBody:(f.get('noticeBody_'+m.id)||m.noticeBody||'').toString().trim().slice(0,240),noticeLevel:['green','yellow','red'].includes(f.get('noticeLevel_'+m.id))?f.get('noticeLevel_'+m.id):(m.noticeLevel||'yellow'),noticeEnabled:f.getAll('noticeEnabled_'+m.id).includes('1')};});
         const safeLabel=/^[\p{L}\p{N} %_().+\-]{1,40}$/u;
         if(modes.some(m=>!safeLabel.test(m.label)||!m.noticeTitle||!m.noticeBody||(m.pathMax&&!safeModePath(m.pathMax))||(m.pathNormal&&!safeModePath(m.pathNormal))))return cachePg(env,me,'Completa correctamente los datos del modo.');
         await env.DZH_KV.put('dzh_app_modes',JSON.stringify(modes));
@@ -2107,6 +2171,48 @@ if(path==='/usage'&&sa){
   '<div class="sg"><div class="stat"><div class="stat-n">'+(dataError?'—':total)+'</div><div class="stat-l">Entregas autorizadas</div><div class="stat-sub">'+label+' · recursos solicitados</div></div><div class="stat"><div class="stat-n" style="font-size:20px">'+(dataError?'No disponible':esc(top?top.label:'Sin registros'))+'</div><div class="stat-l">Modo con más uso</div><div class="stat-sub">'+(top?top.total+' entregas en este periodo':'Todavía no hay actividad de este periodo')+'</div></div><div class="stat"><div class="stat-n">'+(dataError?'—':noActivity)+'</div><div class="stat-l">Modos activos sin uso</div><div class="stat-sub">Sin entregas registradas en '+label.toLowerCase()+'</div></div></div>'+
   '<div class="card" style="margin-top:18px"><div class="card-h"><span class="card-t">Ranking por modo y juego</span><span style="font-size:11px;color:var(--t3)">Participación del total</span></div><div class="card-b"><div class="tw">'+(rows?'<table><thead><tr><th>Opción</th><th>FF MAX</th><th>FF Normal</th><th>Total</th><th>Participación</th></tr></thead><tbody>'+rows+'</tbody></table>':'<div class="em"><span class="em-ic">▥</span><p class="em-t">'+(dataError?'Estadísticas temporalmente no disponibles':'Sin entregas registradas')+'</p><p class="em-s">'+(dataError?'Inténtalo más tarde; los recursos del cliente siguen funcionando.':'Los conteos históricos empiezan el '+startDate+'. No hay datos anteriores que se puedan recuperar.')+'</p></div>')+'</div></div></div><div class="al al-s" style="margin-top:14px">Se guarda únicamente un contador diario agregado por modo y juego; no se conservan keys, IP ni identificadores de clientes. Cuenta entregas autorizadas del recurso, no confirma que la inyección haya terminado correctamente. Histórico disponible desde '+startDate+'. Si falla el contador o se alcanza la cuota de D1, no se interrumpen las descargas pero puede omitirse ese conteo.</div>';
   return wrap('Uso',body,ses);
+}
+
+if(path.startsWith('/bundlefiles/')&&sa){
+  const bfRest=path.slice('/bundlefiles/'.length);
+  const bfSlash=bfRest.indexOf('/');
+  const bfModeId=decodeURIComponent(bfSlash>0?bfRest.slice(0,bfSlash):bfRest).toLowerCase();
+  const bfAction=bfSlash>0?bfRest.slice(bfSlash+1):'';
+  if(!/^[a-z0-9_-]{1,32}$/.test(bfModeId))return wrap('Bundle Files','<div class="al al-w">ID de modo inválido</div>',{role:'superadmin',user:me});
+  const bfModes=await modeDefinitions(env);
+  const bfMode=bfModes.find(m=>m.id===bfModeId);
+  if(!bfMode)return wrap('Bundle Files','<div class="al al-w">Modo no encontrado: '+esc(bfModeId)+'</div>',{role:'superadmin',user:me});
+
+  if(bfAction==='upload'&&mt==='POST'){
+    try{
+      const bf=await req.formData();
+      const fileName=(bf.get('filename')||'').toString().trim();
+      const file=bf.get('file')||bf.get('archivo')||bf.get('upload')||Array.from(bf.values()).find(v=>v&&typeof v.arrayBuffer==='function');
+      if(!fileName||!/^[A-Za-z0-9._~\-=]{1,200}$/.test(fileName))return bundleFilesPg(env,me,bfModeId,bfMode,'Nombre de archivo inválido. Solo letras, números, punto, guion, guion bajo y tilde.');
+      if(!file||typeof file==='string'||typeof file.arrayBuffer!=='function')return bundleFilesPg(env,me,bfModeId,bfMode,'Selecciona un archivo para subir.');
+      const buf=await file.arrayBuffer();
+      if(!buf.byteLength)return bundleFilesPg(env,me,bfModeId,bfMode,'El archivo está vacío.');
+      if(buf.byteLength>15000000)return bundleFilesPg(env,me,bfModeId,bfMode,'Archivo muy grande (máx 15 MB por archivo).');
+      const r2Key='bundle/'+bfModeId+'/'+fileName;
+      await env.DZH_FILES.put(r2Key,buf,{httpMetadata:{contentType:'application/octet-stream'},customMetadata:{uploadedBy:me,uploadedAt:String(Date.now()),size:String(buf.byteLength)}});
+      try{await al(env,me,'upload_bundle_file',bfModeId+'/'+fileName+' ('+buf.byteLength+' bytes)');}catch(e){}
+      return bundleFilesPg(env,me,bfModeId,bfMode,'✓ Archivo subido: '+fileName+' ('+buf.byteLength+' bytes)');
+    }catch(e){return bundleFilesPg(env,me,bfModeId,bfMode,'Error al subir: '+(e?.message||'desconocido'));}
+  }
+
+  if(bfAction==='delete'&&mt==='POST'){
+    try{
+      const bf=await req.formData();
+      const fileName=(bf.get('filename')||'').toString().trim();
+      if(!fileName)return bundleFilesPg(env,me,bfModeId,bfMode,'Nombre de archivo faltante.');
+      const r2Key='bundle/'+bfModeId+'/'+fileName;
+      await env.DZH_FILES.delete(r2Key);
+      try{await al(env,me,'delete_bundle_file',bfModeId+'/'+fileName);}catch(e){}
+      return bundleFilesPg(env,me,bfModeId,bfMode,'✓ Archivo eliminado: '+fileName);
+    }catch(e){return bundleFilesPg(env,me,bfModeId,bfMode,'Error al eliminar: '+(e?.message||'desconocido'));}
+  }
+
+  return bundleFilesPg(env,me,bfModeId,bfMode,'');
 }
 
 if(path==='/live'&&sa){
@@ -2244,6 +2350,33 @@ async function serveCache(req,env,slot,ctx){
   if(!d.poisoned&&env.DZ_USAGE_DB&&ctx?.waitUntil){try{const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Mexico_City',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const get=t=>parts.find(x=>x.type===t)?.value||'';const day=get('year')+'-'+get('month')+'-'+get('day');const modeId=slot.endsWith('_ff')?slot.slice(0,-3):slot;const game=slot.endsWith('_ff')?'ffnormal':'ffmax';const task=env.DZ_USAGE_DB.prepare('INSERT INTO mode_usage_daily (usage_day,mode_id,game,requests) VALUES (?,?,?,1) ON CONFLICT(usage_day,mode_id,game) DO UPDATE SET requests=requests+1').bind(day,modeId,game).run().catch(()=>null);ctx.waitUntil(task);}catch(_){}}
   return new Response(enc,{headers:{...h,'Content-Type':'application/octet-stream','X-DZ-Enc':'1'}});
 }
+async function bundleFilesPg(env,me,modeId,mode,msg){
+  const esc=v=>String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
+  let files=[];let totalSize=0;
+  try{
+    const prefix='bundle/'+modeId+'/';let cursor=undefined;let truncated=true;
+    while(truncated){
+      const list=await env.DZH_FILES.list({prefix,cursor,limit:500});
+      for(const obj of list.objects){
+        const name=obj.key.slice(prefix.length);
+        if(!name)continue;
+        files.push({name,size:obj.size,uploaded:obj.uploaded?new Date(obj.uploaded).toISOString().slice(0,16).replace('T',' '):'?'});
+        totalSize+=obj.size;
+      }
+      truncated=list.truncated;cursor=list.cursor;
+    }
+  }catch(e){files=[];msg=(msg||'')+'  Error al listar R2: '+(e?.message||'desconocido');}
+  const fmtSize=b=>{if(b>=1048576)return (b/1048576).toFixed(1)+' MB';if(b>=1024)return (b/1024).toFixed(1)+' KB';return b+' B';};
+  const fileRows=files.length?files.map((f,i)=>`<tr><td style="font-size:12px">${i+1}</td><td style="word-break:break-all"><code style="font-size:12px;user-select:all">${esc(f.name)}</code></td><td style="font-size:12px;white-space:nowrap">${fmtSize(f.size)}</td><td style="font-size:11px;color:var(--t3);white-space:nowrap">${esc(f.uploaded)}</td><td><form method="POST" action="/bundlefiles/${esc(modeId)}/delete" style="margin:0"><input type="hidden" name="filename" value="${esc(f.name)}"><button type="submit" onclick="return confirm('¿Eliminar ${esc(f.name)}?')" class="btn b-sm" style="color:#fca5a5;border-color:rgba(248,113,113,.45);font-size:11px">🗑</button></form></td></tr>`).join(''):'';
+  const body=`
+<div class="ph"><div><h1>📦 Bundle: ${esc(mode.label)}</h1><p>Archivos del bundle <code>${esc(modeId)}</code> · almacenados en R2 · solo superadmin</p></div><div class="acts"><a class="btn b-gh" href="/avatarfiles">← Volver a modos</a></div></div>
+${msg?`<div class="mbar" style="margin-bottom:18px;border-color:var(--ok);color:var(--ok)">${msg}</div>`:''}
+<div class="sg" style="margin-bottom:18px"><div class="stat"><div class="stat-n">${files.length}</div><div class="stat-l">Archivos</div></div><div class="stat"><div class="stat-n">${fmtSize(totalSize)}</div><div class="stat-l">Tamaño total</div></div></div>
+<div class="card" style="margin-bottom:18px"><div class="card-h"><span class="card-t">Subir archivo</span></div><div class="card-b"><form method="POST" action="/bundlefiles/${esc(modeId)}/upload" enctype="multipart/form-data" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end"><div class="fg" style="flex:1;min-width:200px;margin:0"><label>Nombre del archivo (exacto, con extensión)</label><input name="filename" required placeholder="nombre_archivo.bundle" pattern="[A-Za-z0-9._~\\-=]{1,200}" maxlength="200"></div><div class="fg" style="flex:1;min-width:200px;margin:0"><label>Archivo (máx 15 MB)</label><input type="file" name="file" required></div><button class="btn b-pr">📤 Subir</button></form><p style="font-size:11px;color:var(--t3);margin-top:10px">El nombre del archivo es el que usará la app para escribirlo en la carpeta de destino. Si subes un archivo con el mismo nombre, se reemplaza.</p></div></div>
+<div class="card"><div class="card-h"><span class="card-t">Archivos en el bundle (${files.length})</span></div><div class="card-b">${files.length?`<div class="tw"><table><thead><tr><th>#</th><th>Nombre</th><th>Tamaño</th><th>Subido</th><th></th></tr></thead><tbody>${fileRows}</tbody></table></div>`:'<div class="em"><span class="em-ic">📦</span><p class="em-t">Sin archivos</p><p class="em-s">Sube archivos para que la app pueda descargarlos como bundle.</p></div>'}</div></div>`;
+  return wrap('Bundle: '+mode.label,body,{role:'superadmin',user:me});
+}
+
 async function cachePg(env,me,msg,modeCfgOverride=null){
   // Usa el estado recién guardado cuando viene del mismo POST; evita que la consistencia eventual de KV oculte el modo recién creado.
   const modeCfg=modeCfgOverride||await modeDefinitions(env);
@@ -2262,8 +2395,8 @@ async function cachePg(env,me,msg,modeCfgOverride=null){
   const shownRoute=(m,game)=>{const custom=game==='max'?m.pathMax:m.pathNormal;return custom||avatarRoot+'/'+(game==='max'?cfg.destinations.freeFireMax:cfg.destinations.freeFire);};
   const body=`
 <div class="ph"><div><h1>Avatar Files</h1><p>Archivos avatar por juego · solo superadmin · <code>Worker modes-fix-2026-09-03</code></p></div></div>${msg?`<div class="mbar" style="margin-bottom:18px;border-color:var(--ok);color:var(--ok)">${msg}</div>`:''}
-<div class="card" style="margin-bottom:18px"><div class="card-h"><span class="card-t">Agregar modo</span></div><div class="card-b"><form method="POST" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end"><input type="hidden" name="action" value="create_mode"><div class="fg" style="flex:1;min-width:150px;margin:0"><label>ID interno</label><input name="new_id" placeholder="cuello (opcional; se genera si lo dejas vacío)"></div><div class="fg" style="flex:1;min-width:180px;margin:0"><label>Nombre visible</label><input name="new_label" placeholder="Cuello" required></div><div class="fg" style="min-width:140px;margin:0"><label>Acceso</label><select name="new_tier"><option value="basic">Basic</option><option value="pro">Pro</option></select></div><div class="fg" style="min-width:170px;margin:0"><label>Ruta</label><select name="new_route_mode" onchange="document.getElementById('customPaths').style.display=this.value==='custom'?'flex':'none'"><option value="avatar">Usar ruta de Avatar Files</option><option value="custom">Crear nueva ruta</option></select></div><button class="btn b-pr">Crear modos y slots</button><div id="customPaths" style="display:none;width:100%;gap:8px"><input name="new_path_max" placeholder="Ruta completa MAX: Documents/..." style="flex:1"><input name="new_path_normal" placeholder="Ruta completa normal: Documents/..." style="flex:1"></div></form><p style="font-size:11px;color:var(--t3);margin-top:12px">Cada modo crea automáticamente un slot MAX y otro normal (_ff).</p></div></div>
-<div class="card" style="margin-bottom:18px"><div class="card-h"><span class="card-t">Configuración de modos</span></div><div class="card-b"><p style="font-size:12px;color:var(--t3);margin:0 0 14px">Cada modo tiene un slot para MAX y otro para normal. La visibilidad de cada juego se controla por separado; las rutas y los archivos permanecen separados.</p><form method="POST"><input type="hidden" name="action" value="save_modes">${modeCfg.map(m=>`<div style="border:1px solid var(--b1);border-radius:12px;padding:16px;margin-bottom:14px;background:rgba(255,255,255,.015)"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px"><div><div style="font-size:16px;font-weight:700">${esc(m.label)}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">ID interno: <code>${esc(m.id)}</code> · acceso: <strong>${m.accessTier==='pro'?'Pro':'Basic'}</strong></div></div><div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap"><button type="submit" name="move_mode" value="${esc(m.id)}|up" class="btn b-sm" title="Subir modo">↑</button><button type="submit" name="move_mode" value="${esc(m.id)}|down" class="btn b-sm" title="Bajar modo">↓</button><button type="submit" name="clear_files" value="${esc(m.id)}" onclick="return confirm('¿Quitar los archivos MAX/normal de ${esc(m.label)}? El modo permanecerá creado.')" class="btn b-sm" style="color:#fca5a5;border-color:rgba(248,113,113,.45)">🧹 Quitar archivos</button><button type="submit" name="delete_mode" value="${esc(m.id)}" onclick="return confirm('¿Eliminar por completo el modo ${esc(m.label)}?')" class="btn b-sm" style="color:#ff8f98;border-color:rgba(255,111,120,.5)">🗑 Eliminar modo</button></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-bottom:14px"><details open style="border:1px solid rgba(99,102,241,.45);border-radius:9px;padding:11px"><summary style="cursor:pointer;font-weight:700;color:#a5b4fc">🔥 Free Fire MAX</summary><div style="padding-top:8px"><label style="display:flex;align-items:center;gap:7px;font-size:12px;margin-bottom:8px"><input type="hidden" name="enabledMax_${m.id}" value="0"><input type="checkbox" name="enabledMax_${m.id}" value="1" ${m.enabledMax?'checked':''} style="width:auto"><span>${m.enabledMax?'Visible':'No visible'}</span></label><div style="font-size:11px;color:var(--t3);margin-bottom:5px">Slot: <code>${esc(m.id)}</code></div><div style="font-size:11px;line-height:1.45;word-break:break-all">Ruta: <code style="user-select:all">${esc(shownRoute(m,'max'))}</code></div></div></details><details open style="border:1px solid rgba(34,197,94,.45);border-radius:9px;padding:11px"><summary style="cursor:pointer;font-weight:700;color:#86efac">🎮 Free Fire normal</summary><div style="padding-top:8px"><label style="display:flex;align-items:center;gap:7px;font-size:12px;margin-bottom:8px"><input type="hidden" name="enabledNormal_${m.id}" value="0"><input type="checkbox" name="enabledNormal_${m.id}" value="1" ${m.enabledNormal?'checked':''} style="width:auto"><span>${m.enabledNormal?'Visible':'No visible'}</span></label><div style="font-size:11px;color:var(--t3);margin-bottom:4px">Slot: <code>${esc(m.id)}_ff</code></div><div style="font-size:11px;line-height:1.45;word-break:break-all">Ruta: <code style="user-select:all">${esc(shownRoute(m,'normal'))}</code></div></details></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:10px"><div><label style="font-size:11px;color:var(--t3);display:block;margin-bottom:4px">Nombre visible</label><input name="label_${m.id}" value="${esc(m.label)}" required maxlength="40" style="width:100%"></div><div><label style="font-size:11px;color:var(--t3);display:block;margin-bottom:4px">Acceso</label><select name="accessTier_${m.id}" style="width:100%"><option value="basic" ${m.accessTier==='basic'?'selected':''}>Basic</option><option value="pro" ${m.accessTier==='pro'?'selected':''}>Pro</option></select></div></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:10px"><div><label style="font-size:11px;color:var(--t3);display:block;margin-bottom:4px">Ruta personalizada MAX (opcional)</label><input name="pathMax_${m.id}" value="${esc(m.pathMax||'')}" placeholder="Documents/..." style="width:100%"></div><div><label style="font-size:11px;color:var(--t3);display:block;margin-bottom:4px">Ruta personalizada normal (opcional)</label><input name="pathNormal_${m.id}" value="${esc(m.pathNormal||'')}" placeholder="Documents/..." style="width:100%"></div></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:10px"><div><label style="font-size:11px;color:var(--t3);display:block;margin-bottom:4px">Título del anuncio</label><input name="noticeTitle_${m.id}" value="${esc(m.noticeTitle)}" required maxlength="60" style="width:100%"></div><div><label style="font-size:11px;color:var(--t3);display:block;margin-bottom:4px">Nivel del anuncio</label><select name="noticeLevel_${m.id}" style="width:100%"><option value="green" ${m.noticeLevel==='green'?'selected':''}>🟢 Verde — Estable</option><option value="yellow" ${m.noticeLevel==='yellow'?'selected':''}>🟡 Amarillo — Precaución</option><option value="red" ${m.noticeLevel==='red'?'selected':''}>🔴 Rojo — Cuidado</option></select></div></div><label style="font-size:11px;color:var(--t3);display:block;margin-bottom:4px">Leyenda / descripción</label><textarea name="noticeBody_${m.id}" required maxlength="240" placeholder="Escribe la leyenda que verá el cliente" style="width:100%;min-height:70px;margin-bottom:9px">${esc(m.noticeBody)}</textarea><label style="display:flex;align-items:center;gap:7px;font-size:12px"><input type="hidden" name="noticeEnabled_${m.id}" value="0"><input type="checkbox" name="noticeEnabled_${m.id}" value="1" ${m.noticeEnabled?'checked':''} style="width:auto"> Mostrar anuncio en ambos juegos</label></div>`).join('')}<button class="btn b-ok">💾 Guardar modos y anuncios</button></form></div></div>
+<div class="card" style="margin-bottom:18px"><div class="card-h"><span class="card-t">Agregar modo</span></div><div class="card-b"><form method="POST" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end"><input type="hidden" name="action" value="create_mode"><div class="fg" style="flex:1;min-width:150px;margin:0"><label>ID interno</label><input name="new_id" placeholder="cuello (opcional; se genera si lo dejas vacío)"></div><div class="fg" style="flex:1;min-width:180px;margin:0"><label>Nombre visible</label><input name="new_label" placeholder="Cuello" required></div><div class="fg" style="min-width:140px;margin:0"><label>Acceso</label><select name="new_tier"><option value="basic">Basic</option><option value="pro">Pro</option></select></div><div class="fg" style="min-width:170px;margin:0"><label>Ruta</label><select name="new_route_mode" onchange="document.getElementById('customPaths').style.display=this.value==='custom'?'flex':'none'"><option value="avatar">Usar ruta de Avatar Files</option><option value="custom">Crear nueva ruta</option></select></div><label style="display:flex;align-items:center;gap:7px;font-size:12px;white-space:nowrap;margin:0;align-self:center"><input type="checkbox" name="new_bundle" value="1" style="width:auto"> 📦 Bundle (multi-archivo)</label><button class="btn b-pr">Crear modos y slots</button><div id="customPaths" style="display:none;width:100%;gap:8px"><input name="new_path_max" placeholder="Ruta completa MAX: Documents/..." style="flex:1"><input name="new_path_normal" placeholder="Ruta completa normal: Documents/..." style="flex:1"></div></form><p style="font-size:11px;color:var(--t3);margin-top:12px">Cada modo crea automáticamente un slot MAX y otro normal (_ff). Si marcas <strong>Bundle</strong>, el modo inyecta múltiples archivos a la carpeta de destino.</p></div></div>
+<div class="card" style="margin-bottom:18px"><div class="card-h"><span class="card-t">Configuración de modos</span></div><div class="card-b"><p style="font-size:12px;color:var(--t3);margin:0 0 14px">Cada modo tiene un slot para MAX y otro para normal. La visibilidad de cada juego se controla por separado; las rutas y los archivos permanecen separados.</p><form method="POST"><input type="hidden" name="action" value="save_modes">${modeCfg.map(m=>`<div style="border:1px solid var(--b1);border-radius:12px;padding:16px;margin-bottom:14px;background:rgba(255,255,255,.015)"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px"><div><div style="font-size:16px;font-weight:700">${esc(m.label)}${m.bundle?' <span style="display:inline-block;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:6px;vertical-align:middle;margin-left:6px">📦 Bundle</span>':''}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">ID interno: <code>${esc(m.id)}</code> · acceso: <strong>${m.accessTier==='pro'?'Pro':'Basic'}</strong>${m.bundle?' · <a href="/bundlefiles/'+esc(m.id)+'" style="color:#a78bfa;text-decoration:underline">Administrar archivos bundle</a>':''}</div></div><div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap"><button type="submit" name="move_mode" value="${esc(m.id)}|up" class="btn b-sm" title="Subir modo">↑</button><button type="submit" name="move_mode" value="${esc(m.id)}|down" class="btn b-sm" title="Bajar modo">↓</button><button type="submit" name="clear_files" value="${esc(m.id)}" onclick="return confirm('¿Quitar los archivos MAX/normal de ${esc(m.label)}? El modo permanecerá creado.')" class="btn b-sm" style="color:#fca5a5;border-color:rgba(248,113,113,.45)">🧹 Quitar archivos</button><button type="submit" name="delete_mode" value="${esc(m.id)}" onclick="return confirm('¿Eliminar por completo el modo ${esc(m.label)}?')" class="btn b-sm" style="color:#ff8f98;border-color:rgba(255,111,120,.5)">🗑 Eliminar modo</button></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-bottom:14px"><details open style="border:1px solid rgba(99,102,241,.45);border-radius:9px;padding:11px"><summary style="cursor:pointer;font-weight:700;color:#a5b4fc">🔥 Free Fire MAX</summary><div style="padding-top:8px"><label style="display:flex;align-items:center;gap:7px;font-size:12px;margin-bottom:8px"><input type="hidden" name="enabledMax_${m.id}" value="0"><input type="checkbox" name="enabledMax_${m.id}" value="1" ${m.enabledMax?'checked':''} style="width:auto"><span>${m.enabledMax?'Visible':'No visible'}</span></label><div style="font-size:11px;color:var(--t3);margin-bottom:5px">Slot: <code>${esc(m.id)}</code></div><div style="font-size:11px;line-height:1.45;word-break:break-all">Ruta: <code style="user-select:all">${esc(shownRoute(m,'max'))}</code></div></div></details><details open style="border:1px solid rgba(34,197,94,.45);border-radius:9px;padding:11px"><summary style="cursor:pointer;font-weight:700;color:#86efac">🎮 Free Fire normal</summary><div style="padding-top:8px"><label style="display:flex;align-items:center;gap:7px;font-size:12px;margin-bottom:8px"><input type="hidden" name="enabledNormal_${m.id}" value="0"><input type="checkbox" name="enabledNormal_${m.id}" value="1" ${m.enabledNormal?'checked':''} style="width:auto"><span>${m.enabledNormal?'Visible':'No visible'}</span></label><div style="font-size:11px;color:var(--t3);margin-bottom:4px">Slot: <code>${esc(m.id)}_ff</code></div><div style="font-size:11px;line-height:1.45;word-break:break-all">Ruta: <code style="user-select:all">${esc(shownRoute(m,'normal'))}</code></div></details></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:10px"><div><label style="font-size:11px;color:var(--t3);display:block;margin-bottom:4px">Nombre visible</label><input name="label_${m.id}" value="${esc(m.label)}" required maxlength="40" style="width:100%"></div><div><label style="font-size:11px;color:var(--t3);display:block;margin-bottom:4px">Acceso</label><select name="accessTier_${m.id}" style="width:100%"><option value="basic" ${m.accessTier==='basic'?'selected':''}>Basic</option><option value="pro" ${m.accessTier==='pro'?'selected':''}>Pro</option></select></div></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:10px"><div><label style="font-size:11px;color:var(--t3);display:block;margin-bottom:4px">Ruta personalizada MAX (opcional)</label><input name="pathMax_${m.id}" value="${esc(m.pathMax||'')}" placeholder="Documents/..." style="width:100%"></div><div><label style="font-size:11px;color:var(--t3);display:block;margin-bottom:4px">Ruta personalizada normal (opcional)</label><input name="pathNormal_${m.id}" value="${esc(m.pathNormal||'')}" placeholder="Documents/..." style="width:100%"></div></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:10px"><div><label style="font-size:11px;color:var(--t3);display:block;margin-bottom:4px">Título del anuncio</label><input name="noticeTitle_${m.id}" value="${esc(m.noticeTitle)}" required maxlength="60" style="width:100%"></div><div><label style="font-size:11px;color:var(--t3);display:block;margin-bottom:4px">Nivel del anuncio</label><select name="noticeLevel_${m.id}" style="width:100%"><option value="green" ${m.noticeLevel==='green'?'selected':''}>🟢 Verde — Estable</option><option value="yellow" ${m.noticeLevel==='yellow'?'selected':''}>🟡 Amarillo — Precaución</option><option value="red" ${m.noticeLevel==='red'?'selected':''}>🔴 Rojo — Cuidado</option></select></div></div><label style="font-size:11px;color:var(--t3);display:block;margin-bottom:4px">Leyenda / descripción</label><textarea name="noticeBody_${m.id}" required maxlength="240" placeholder="Escribe la leyenda que verá el cliente" style="width:100%;min-height:70px;margin-bottom:9px">${esc(m.noticeBody)}</textarea><label style="display:flex;align-items:center;gap:7px;font-size:12px"><input type="hidden" name="noticeEnabled_${m.id}" value="0"><input type="checkbox" name="noticeEnabled_${m.id}" value="1" ${m.noticeEnabled?'checked':''} style="width:auto"> Mostrar anuncio en ambos juegos</label><label style="display:flex;align-items:center;gap:7px;font-size:12px;margin-top:8px"><input type="hidden" name="bundle_${m.id}" value="0"><input type="checkbox" name="bundle_${m.id}" value="1" ${m.bundle?'checked':''} style="width:auto"> 📦 Bundle (multi-archivo — inyecta carpeta completa)</label></div>`).join('')}<button class="btn b-ok">💾 Guardar modos y anuncios</button></form></div></div>
 <div class="card" style="margin-bottom:18px"><div class="card-h"><span class="card-t">Rutas de destino</span></div><div class="card-b"><form method="POST"><input type="hidden" name="action" value="save_destinations"><div class="g2"><div class="fg"><label>Free Fire normal</label><input name="freeFire" value="${cfg.destinations.freeFire}" required></div><div class="fg"><label>Free Fire MAX</label><input name="freeFireMax" value="${cfg.destinations.freeFireMax}" required></div></div><button class="btn b-ok">Guardar rutas</button></form></div></div>
 ${sections}
 `;

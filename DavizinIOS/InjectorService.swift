@@ -62,6 +62,19 @@ private func isSafeRelativePath(_ value: String) -> Bool {
     return value.unicodeScalars.allSatisfy { allowed.contains($0) }
 }
 
+private func isSafeBundleFileName(_ value: String) -> Bool {
+    guard !value.isEmpty, value.count <= 200,
+          !value.contains("/"), !value.contains("\\"), !value.contains("..") else { return false }
+    let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._~-=")
+    return value.unicodeScalars.allSatisfy { allowed.contains($0) }
+}
+
+private func bundleBasePath(for game: DavizinGame, mode: DavizinMode) -> String? {
+    let configured = game == .freeFireMax ? mode.pathMax : mode.pathNormal
+    guard let configured, isSafeRelativePath(configured) else { return nil }
+    return configured
+}
+
 private func destPathRel(for game: DavizinGame, mode: DavizinMode) -> String {
     let configured = game == .freeFireMax ? mode.pathMax : mode.pathNormal
     if let configured, isSafeRelativePath(configured) { return configured }
@@ -432,6 +445,176 @@ class InjectorService {
 
         return InjectorResult(success: true,
             message: "\(mode.displayName) inyectado con exito!")
+    }
+
+    // MARK: - Bundle Injection (multi-file, direct replacement, no backup)
+
+    private struct BundleManifest: Codable {
+        let files: [String]
+    }
+
+    static func injectBundle(game: DavizinGame, mode: DavizinMode, key: String, hwid: String) -> InjectorResult {
+        guard NyxelSupportPolicy.isCurrentSystemSupported else {
+            return InjectorResult(success: false,
+                message: "Version no verificada: \(NyxelSupportPolicy.currentSystemDescription)")
+        }
+
+        let bid = bundleID(for: game)
+        let pairingRequired = requiresPairingTransportOnCurrentDevice()
+
+        NyxelActivityLog.record("========== BUNDLE INJECTION TRACE BEGIN ==========")
+        NyxelActivityLog.record("DIAG system=\(NyxelSupportPolicy.currentSystemDescription) game=\(game.rawValue) mode=\(mode.displayName) bundle=true pairingRequired=\(pairingRequired)")
+
+        var mcmErr: String?
+        let container = getContainerPathWithTimeout(bundleID: bid, error: &mcmErr)
+
+        if container == nil && pairingRequired && NixelAirLiftFileChannel.isAvailable {
+            NyxelActivityLog.record("DIAG MCM fallo en iOS 27 pero AirLift disponible; continuando")
+        } else if container == nil {
+            return InjectorResult(success: false,
+                message: mcmErr ?? "Container no encontrado")
+        }
+
+        guard let basePath = bundleBasePath(for: game, mode: mode) else {
+            return InjectorResult(success: false,
+                message: "Ruta del bundle no configurada.")
+        }
+
+        if let container = container {
+            try? FileManager.default.createDirectory(
+                atPath: container + "/" + basePath,
+                withIntermediateDirectories: true)
+        }
+
+        NotificationCenter.default.post(name: .nyxelInjectionProgress,
+            object: "Obteniendo lista de archivos...")
+
+        guard let manifest = downloadBundleManifest(for: mode, key: key, hwid: hwid) else {
+            return InjectorResult(success: false,
+                message: "No se pudo obtener la lista de archivos. Revisa tu conexion.")
+        }
+
+        guard !manifest.files.isEmpty else {
+            return InjectorResult(success: false,
+                message: "No hay archivos configurados para este modo.")
+        }
+
+        let total = manifest.files.count
+        let containerForWrite = container ?? "/not-available"
+        var written = 0
+        var failedCount = 0
+        let lock = NSLock()
+        let concurrencySem = DispatchSemaphore(value: 6)
+        let group = DispatchGroup()
+        let dlQueue = DispatchQueue(label: "com.davizin.bundle-dl", attributes: .concurrent)
+
+        for fileName in manifest.files {
+            guard isSafeBundleFileName(fileName) else {
+                lock.lock(); failedCount += 1; lock.unlock()
+                continue
+            }
+
+            group.enter()
+            concurrencySem.wait()
+            dlQueue.async {
+                defer { concurrencySem.signal(); group.leave() }
+
+                guard let fileData = downloadBundleFile(
+                    modeId: mode.id, fileName: fileName, key: key, hwid: hwid),
+                      fileData.count > 0 else {
+                    lock.lock(); failedCount += 1; lock.unlock()
+                    return
+                }
+
+                let relPath = basePath + "/" + fileName
+                let writeError = writeToContainer(
+                    fileData, relPath: relPath,
+                    container: containerForWrite, bundleID: bid)
+
+                lock.lock()
+                if writeError != nil {
+                    failedCount += 1
+                } else {
+                    written += 1
+                    let progress = written
+                    DispatchQueue.main.async {
+                        NotificationCenter.default.post(
+                            name: .nyxelInjectionProgress,
+                            object: "Inyectando archivos... \(progress)/\(total)")
+                    }
+                }
+                lock.unlock()
+            }
+        }
+
+        group.wait()
+
+        NyxelActivityLog.record("========== BUNDLE INJECTION TRACE END (written=\(written)/\(total) failed=\(failedCount)) ==========")
+
+        if written == 0 {
+            return InjectorResult(success: false,
+                message: "No se pudo inyectar ningun archivo. Revisa tu conexion e intentalo de nuevo.")
+        }
+        if failedCount == 0 {
+            return InjectorResult(success: true,
+                message: "\(mode.displayName) inyectado con exito! (\(written) archivos)")
+        }
+        return InjectorResult(success: true,
+            message: "\(mode.displayName) inyectado parcialmente. \(written)/\(total) archivos escritos.")
+    }
+
+    private static func downloadBundleManifest(for mode: DavizinMode, key: String, hwid: String) -> BundleManifest? {
+        guard !key.isEmpty else { return nil }
+        guard let url = URL(string: "\(kCacheBaseURL)\(NyxelStringShield.pathBundle)\(mode.id)/manifest") else { return nil }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(key, forHTTPHeaderField: NyxelStringShield.headerKey)
+        request.setValue(hwid, forHTTPHeaderField: NyxelStringShield.headerHWID)
+        KeyValidator.applySecurityHeaders(to: &request)
+        request.timeoutInterval = 15
+
+        let semaphore = DispatchSemaphore(value: 0)
+        var result: BundleManifest?
+
+        NyxelCertPinning.shared.session.dataTask(with: request) { data, response, _ in
+            defer { semaphore.signal() }
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let data = data else { return }
+            result = try? JSONDecoder().decode(BundleManifest.self, from: data)
+        }.resume()
+
+        _ = semaphore.wait(timeout: .now() + 17)
+        return result
+    }
+
+    private static func downloadBundleFile(modeId: String, fileName: String, key: String, hwid: String) -> Data? {
+        guard !key.isEmpty else { return nil }
+        guard let session = KeyValidator.currentSessionToken, !session.isEmpty else { return nil }
+        guard let encoded = fileName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else { return nil }
+        guard let url = URL(string: "\(kCacheBaseURL)\(NyxelStringShield.pathBundle)\(modeId)/file/\(encoded)") else { return nil }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(key, forHTTPHeaderField: NyxelStringShield.headerKey)
+        request.setValue(hwid, forHTTPHeaderField: NyxelStringShield.headerHWID)
+        KeyValidator.applySecurityHeaders(to: &request)
+        request.timeoutInterval = 60
+
+        let semaphore = DispatchSemaphore(value: 0)
+        var result: Data?
+
+        NyxelCertPinning.shared.session.dataTask(with: request) { data, response, _ in
+            defer { semaphore.signal() }
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let data = data, data.count > 28 else { return }
+            if let plain = decrypt(data, session: session), plain.count > 0 {
+                result = plain
+            }
+        }.resume()
+
+        _ = semaphore.wait(timeout: .now() + 65)
+        return result
     }
 
     // MARK: - Compatibility check

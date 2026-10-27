@@ -18,6 +18,7 @@ struct DavizinMode: Hashable, Codable, Identifiable {
     let pathNormal: String?
     let oneTime: Bool
     let consumed: Bool
+    let bundle: Bool
     /// Visibilidad independiente por juego — antes "enabled" era global y
     /// afectaba ambos juegos a la vez.
     let enabledFreeFire: Bool
@@ -34,11 +35,11 @@ struct DavizinMode: Hashable, Codable, Identifiable {
         }
     }
 
-    init(id: String, label: String, enabled: Bool, noticeTitle: String = "", noticeBody: String = "", noticeLevel: String = "yellow", noticeEnabled: Bool = true, accessTier: String = "basic", pathMax: String? = nil, pathNormal: String? = nil, oneTime: Bool = false, consumed: Bool = false, enabledFreeFire: Bool = true, enabledFreeFireMax: Bool = true) {
-        self.id = id; self.label = label; self.enabled = enabled; self.noticeTitle = noticeTitle; self.noticeBody = noticeBody; self.noticeLevel = noticeLevel; self.noticeEnabled = noticeEnabled; self.accessTier = accessTier; self.pathMax = pathMax; self.pathNormal = pathNormal; self.oneTime = oneTime; self.consumed = consumed; self.enabledFreeFire = enabledFreeFire; self.enabledFreeFireMax = enabledFreeFireMax
+    init(id: String, label: String, enabled: Bool, noticeTitle: String = "", noticeBody: String = "", noticeLevel: String = "yellow", noticeEnabled: Bool = true, accessTier: String = "basic", pathMax: String? = nil, pathNormal: String? = nil, oneTime: Bool = false, consumed: Bool = false, bundle: Bool = false, enabledFreeFire: Bool = true, enabledFreeFireMax: Bool = true) {
+        self.id = id; self.label = label; self.enabled = enabled; self.noticeTitle = noticeTitle; self.noticeBody = noticeBody; self.noticeLevel = noticeLevel; self.noticeEnabled = noticeEnabled; self.accessTier = accessTier; self.pathMax = pathMax; self.pathNormal = pathNormal; self.oneTime = oneTime; self.consumed = consumed; self.bundle = bundle; self.enabledFreeFire = enabledFreeFire; self.enabledFreeFireMax = enabledFreeFireMax
     }
 
-    private enum CodingKeys: String, CodingKey { case id, label, enabled, noticeTitle, noticeBody, noticeLevel, noticeEnabled, accessTier, pathMax, pathNormal, oneTime, consumed, enabledFreeFire = "enabledNormal", enabledFreeFireMax = "enabledMax" }
+    private enum CodingKeys: String, CodingKey { case id, label, enabled, noticeTitle, noticeBody, noticeLevel, noticeEnabled, accessTier, pathMax, pathNormal, oneTime, consumed, bundle, enabledFreeFire = "enabledNormal", enabledFreeFireMax = "enabledMax" }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
@@ -53,6 +54,7 @@ struct DavizinMode: Hashable, Codable, Identifiable {
         pathNormal = try c.decodeIfPresent(String.self, forKey: .pathNormal)
         oneTime = try c.decodeIfPresent(Bool.self, forKey: .oneTime) ?? false
         consumed = try c.decodeIfPresent(Bool.self, forKey: .consumed) ?? false
+        bundle = try c.decodeIfPresent(Bool.self, forKey: .bundle) ?? false
         // Si el Worker todavia no manda estos 2 campos nuevos, por default
         // se comportan como el "enabled" global de antes (compatibilidad).
         enabledFreeFire = try c.decodeIfPresent(Bool.self, forKey: .enabledFreeFire) ?? enabled
@@ -81,7 +83,7 @@ enum DavizinModeCatalog {
     static func markConsumed(_ id: String) {
         let updated = all().map { mode in
             guard mode.id == id else { return mode }
-            return DavizinMode(id: mode.id, label: mode.label, enabled: false, noticeTitle: mode.noticeTitle, noticeBody: mode.noticeBody, noticeLevel: mode.noticeLevel, noticeEnabled: mode.noticeEnabled, accessTier: mode.accessTier, pathMax: mode.pathMax, pathNormal: mode.pathNormal, oneTime: mode.oneTime, consumed: true)
+            return DavizinMode(id: mode.id, label: mode.label, enabled: false, noticeTitle: mode.noticeTitle, noticeBody: mode.noticeBody, noticeLevel: mode.noticeLevel, noticeEnabled: mode.noticeEnabled, accessTier: mode.accessTier, pathMax: mode.pathMax, pathNormal: mode.pathNormal, oneTime: mode.oneTime, consumed: true, bundle: mode.bundle)
         }
         save(updated)
     }
