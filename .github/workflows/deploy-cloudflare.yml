@@ -36,3 +36,38 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy
+
+      - name: R2 Diagnostic after deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npm i -g wrangler@3
+          BUCKET="dz-holograma-files"
+
+          echo "=== 1. List ALL bundle/ objects ==="
+          wrangler r2 object list "$BUCKET" --prefix "bundle/" 2>&1 || echo "ERROR listing"
+
+          echo ""
+          echo "=== 2. Write test file ==="
+          echo "DIAG TEST $(date -u)" > /tmp/r2test.txt
+          wrangler r2 object put "$BUCKET/bundle/avatar_personajes/__diag_ci.txt" --file /tmp/r2test.txt --content-type "text/plain" 2>&1 || echo "ERROR writing"
+
+          echo ""
+          echo "=== 3. Read test file back ==="
+          wrangler r2 object get "$BUCKET/bundle/avatar_personajes/__diag_ci.txt" --file /tmp/r2read.txt 2>&1 && cat /tmp/r2read.txt || echo "ERROR reading"
+
+          echo ""
+          echo "=== 4. List after write ==="
+          wrangler r2 object list "$BUCKET" --prefix "bundle/avatar_personajes/" 2>&1 || echo "ERROR listing after write"
+
+          echo ""
+          echo "=== 5. Delete test file ==="
+          wrangler r2 object delete "$BUCKET/bundle/avatar_personajes/__diag_ci.txt" 2>&1 || echo "ERROR deleting"
+
+          echo ""
+          echo "=== 6. Final list ==="
+          wrangler r2 object list "$BUCKET" --prefix "bundle/" 2>&1 || echo "ERROR final listing"
+
+          echo ""
+          echo "=== DONE ==="
