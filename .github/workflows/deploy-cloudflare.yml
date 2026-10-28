@@ -37,9 +37,12 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy
 
-      - name: R2 Diagnostic via Worker endpoint
+      - name: Bundle Diagnostic via Worker endpoint
         run: |
           echo "=== Waiting 10s for Worker to propagate ==="
           sleep 10
+          echo "=== Calling /bundlediag endpoint ==="
+          curl -sS "https://dz-holograma.davidporfirio17.workers.dev/bundlediag" | python3 -m json.tool 2>&1 || echo "BUNDLEDIAG CURL FAILED"
+          echo ""
           echo "=== Calling /r2diag endpoint ==="
-          curl -sS "https://dz-holograma.davidporfirio17.workers.dev/r2diag" | python3 -m json.tool 2>&1 || echo "CURL FAILED"
+          curl -sS "https://dz-holograma.davidporfirio17.workers.dev/r2diag" | python3 -m json.tool 2>&1 || echo "R2DIAG CURL FAILED"
