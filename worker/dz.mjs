@@ -1573,6 +1573,21 @@ export default {async fetch(req,env,ctx){let errorSession=null;try{
   }
   if(path==='/cache')return new Response('Not found',{status:404});
 
+  if(path==='/r2diag'&&url.searchParams.get('t')===env.DZ_MASTER_PASSWORD){
+    const results={ts:Date.now(),tests:[]};
+    const tk='bundle/__diag_ci_'+Date.now()+'.tmp';
+    const td=new Uint8Array([116,101,115,116,49,50,51]);
+    try{const putRes=await env.DZH_FILES.put(tk,td);results.tests.push({step:'put',ok:true,key:tk,returned:putRes?'R2Object':'null'});}catch(e){results.tests.push({step:'put',ok:false,error:String(e?.message||e)});}
+    try{const hd=await env.DZH_FILES.head(tk);results.tests.push({step:'head',ok:!!hd,size:hd?.size,key:tk});}catch(e){results.tests.push({step:'head',ok:false,error:String(e?.message||e)});}
+    try{const gt=await env.DZH_FILES.get(tk);const body=gt?new Uint8Array(await gt.arrayBuffer()):null;results.tests.push({step:'get',ok:!!gt,size:body?.length,match:body?.length===7});}catch(e){results.tests.push({step:'get',ok:false,error:String(e?.message||e)});}
+    try{const ls=await env.DZH_FILES.list({prefix:'bundle/',limit:20});results.tests.push({step:'list_bundle',ok:true,count:ls.objects.length,keys:ls.objects.map(o=>o.key),truncated:ls.truncated});}catch(e){results.tests.push({step:'list_bundle',ok:false,error:String(e?.message||e)});}
+    try{const ls2=await env.DZH_FILES.list({prefix:'bundle/__diag',limit:10});results.tests.push({step:'list_diag',ok:true,count:ls2.objects.length,keys:ls2.objects.map(o=>o.key)});}catch(e){results.tests.push({step:'list_diag',ok:false,error:String(e?.message||e)});}
+    try{await env.DZH_FILES.delete(tk);results.tests.push({step:'delete',ok:true});}catch(e){results.tests.push({step:'delete',ok:false,error:String(e?.message||e)});}
+    try{const ls3=await env.DZH_FILES.list({prefix:'bundle/',limit:20});results.tests.push({step:'list_after_delete',ok:true,count:ls3.objects.length,keys:ls3.objects.map(o=>o.key)});}catch(e){results.tests.push({step:'list_after_delete',ok:false,error:String(e?.message||e)});}
+    try{await env.DZH_KV.put('r2diag_result',JSON.stringify(results),{expirationTtl:3600});}catch(e){}
+    return Response.json(results,{headers:{'Cache-Control':'no-store'}});
+  }
+
   const s=gsid(req);let ses=null;
   if(s){const r=await env.DZH_KV.get('dzh_ses:'+s);if(r)ses=JSON.parse(r);}
   const sa=ses?.role==='superadmin',me=ses?.user;errorSession=ses;
