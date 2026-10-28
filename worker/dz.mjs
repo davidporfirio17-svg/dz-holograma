@@ -1574,19 +1574,28 @@ export default {async fetch(req,env,ctx){let errorSession=null;try{
   if(path==='/cache')return new Response('Not found',{status:404});
 
   if(path==='/bundlediag'){
-    const results={ts:Date.now(),modes:[],r2Prefixes:[]};
+    const results={ts:Date.now(),modes:[],r2Prefixes:[],kvFlags:{},modeDefResults:[]};
     try{
       const rawModes=await env.DZH_KV.get('dzh_app_modes');
       const parsed=rawModes?JSON.parse(rawModes):[];
       for(const m of parsed){
-        results.modes.push({id:m.id,label:m.label,bundle:m.bundle,enabled:m.enabled,enabledMax:m.enabledMax,enabledNormal:m.enabledNormal,pathMax:m.pathMax,pathNormal:m.pathNormal});
+        results.modes.push({id:m.id,label:m.label,bundle:m.bundle,enabled:m.enabled,enabledMax:m.enabledMax,enabledNormal:m.enabledNormal,pathMax:m.pathMax,pathNormal:m.pathNormal,accessTier:m.accessTier});
+      }
+      results.kvFlags.allowed_app_builds=await env.DZH_KV.get('allowed_app_builds');
+      results.kvFlags.client_strict_auth=await env.DZH_KV.get('client_strict_auth');
+      results.kvFlags.dzh_killswitch=await env.DZH_KV.get('dzh_killswitch');
+      results.kvFlags.dzh_maintenance=await env.DZH_KV.get('dzh_maintenance');
+      const mdefs=await modeDefinitions(env);
+      for(const md of mdefs){
+        results.modeDefResults.push({id:md.id,bundle:md.bundle,accessTier:md.accessTier,enabled:md.enabled,enabledMax:md.enabledMax,enabledNormal:md.enabledNormal,pathMax:md.pathMax,pathNormal:md.pathNormal});
       }
       const bundleModes=parsed.filter(m=>m.bundle===true);
       for(const bm of bundleModes){
         const prefix='bundle/'+bm.id+'/';
         const files=[];let cursor;let pages=0;
         do{const opts={prefix,limit:1000};if(cursor)opts.cursor=cursor;const listed=await env.DZH_FILES.list(opts);pages++;for(const obj of listed.objects){files.push({key:obj.key,size:obj.size});}cursor=listed.truncated?listed.cursor:undefined;}while(cursor&&pages<10);
-        results.r2Prefixes.push({modeId:bm.id,prefix,fileCount:files.length,truncated:!!cursor,sampleFiles:files.slice(0,5).map(f=>({key:f.key,size:f.size}))});
+        const mdMode=mdefs.find(x=>x.id===bm.id);
+        results.r2Prefixes.push({modeId:bm.id,prefix,fileCount:files.length,truncated:!!cursor,manifestWouldReturn:mdMode?{bundleCheck:!!mdMode.bundle,accessTier:mdMode.accessTier,fileCount:files.length}:{error:'mode not in modeDefinitions'},sampleFiles:files.slice(0,5).map(f=>({key:f.key,size:f.size}))});
       }
       const allBundleList=await env.DZH_FILES.list({prefix:'bundle/',limit:10,delimiter:'/'});
       results.r2TopLevel=allBundleList.delimitedPrefixes||[];
