@@ -1,0 +1,86 @@
+name: R2 Diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Wrangler
+        run: npm i -g wrangler@3
+
+      - name: R2 Diagnostic Test
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -e
+          BUCKET="dz-holograma-files"
+
+          echo "=============================="
+          echo "=== 1. List R2 buckets ==="
+          echo "=============================="
+          wrangler r2 bucket list || echo "ERROR listing buckets"
+
+          echo ""
+          echo "=============================="
+          echo "=== 2. List existing bundle/avatar_personajes/ objects ==="
+          echo "=============================="
+          wrangler r2 object list "$BUCKET" --prefix "bundle/avatar_personajes/" || echo "ERROR listing objects"
+
+          echo ""
+          echo "=============================="
+          echo "=== 3. List ALL bundle/ objects ==="
+          echo "=============================="
+          wrangler r2 object list "$BUCKET" --prefix "bundle/" || echo "ERROR listing all bundle objects"
+
+          echo ""
+          echo "=============================="
+          echo "=== 4. Write test file to R2 ==="
+          echo "=============================="
+          echo "R2 TEST FILE $(date)" > /tmp/r2test.txt
+          wrangler r2 object put "$BUCKET/bundle/avatar_personajes/__r2_diag_test.txt" --file /tmp/r2test.txt --content-type "text/plain" || echo "ERROR writing test file"
+
+          echo ""
+          echo "=============================="
+          echo "=== 5. Read test file back ==="
+          echo "=============================="
+          wrangler r2 object get "$BUCKET/bundle/avatar_personajes/__r2_diag_test.txt" --file /tmp/r2test_read.txt && cat /tmp/r2test_read.txt || echo "ERROR reading test file"
+
+          echo ""
+          echo "=============================="
+          echo "=== 6. List after write ==="
+          echo "=============================="
+          wrangler r2 object list "$BUCKET" --prefix "bundle/avatar_personajes/" || echo "ERROR listing after write"
+
+          echo ""
+          echo "=============================="
+          echo "=== 7. Delete test file ==="
+          echo "=============================="
+          wrangler r2 object delete "$BUCKET/bundle/avatar_personajes/__r2_diag_test.txt" || echo "ERROR deleting test file"
+
+          echo ""
+          echo "=============================="
+          echo "=== 8. Final list ==="
+          echo "=============================="
+          wrangler r2 object list "$BUCKET" --prefix "bundle/avatar_personajes/" || echo "ERROR final listing"
+
+          echo ""
+          echo "=============================="
+          echo "=== DONE ==="
+          echo "=============================="
