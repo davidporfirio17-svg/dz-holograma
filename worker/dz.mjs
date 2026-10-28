@@ -1573,6 +1573,27 @@ export default {async fetch(req,env,ctx){let errorSession=null;try{
   }
   if(path==='/cache')return new Response('Not found',{status:404});
 
+  if(path==='/bundlediag'){
+    const results={ts:Date.now(),modes:[],r2Prefixes:[]};
+    try{
+      const rawModes=await env.DZH_KV.get('dzh_app_modes');
+      const parsed=rawModes?JSON.parse(rawModes):[];
+      for(const m of parsed){
+        results.modes.push({id:m.id,label:m.label,bundle:m.bundle,enabled:m.enabled,enabledMax:m.enabledMax,enabledNormal:m.enabledNormal,pathMax:m.pathMax,pathNormal:m.pathNormal});
+      }
+      const bundleModes=parsed.filter(m=>m.bundle===true);
+      for(const bm of bundleModes){
+        const prefix='bundle/'+bm.id+'/';
+        const files=[];let cursor;let pages=0;
+        do{const opts={prefix,limit:1000};if(cursor)opts.cursor=cursor;const listed=await env.DZH_FILES.list(opts);pages++;for(const obj of listed.objects){files.push({key:obj.key,size:obj.size});}cursor=listed.truncated?listed.cursor:undefined;}while(cursor&&pages<10);
+        results.r2Prefixes.push({modeId:bm.id,prefix,fileCount:files.length,truncated:!!cursor,sampleFiles:files.slice(0,5).map(f=>({key:f.key,size:f.size}))});
+      }
+      const allBundleList=await env.DZH_FILES.list({prefix:'bundle/',limit:10,delimiter:'/'});
+      results.r2TopLevel=allBundleList.delimitedPrefixes||[];
+    }catch(e){results.error=String(e?.message||e);}
+    return Response.json(results,{headers:{'Cache-Control':'no-store'}});
+  }
+
   if(path==='/r2diag'){
     const results={ts:Date.now(),tests:[]};
     const tk='bundle/__diag_ci_'+Date.now()+'.tmp';
