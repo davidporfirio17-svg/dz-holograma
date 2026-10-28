@@ -1580,6 +1580,12 @@ export default {async fetch(req,env,ctx){let errorSession=null;try{
   }
   if(path==='/cache')return new Response('Not found',{status:404});
 
+  if(path==='/chklog'){
+    const list=await env.DZH_KV.list({prefix:'chklog:',limit:100});
+    const entries=[];for(const k of list.keys){const v=await env.DZH_KV.get(k.name);if(v)try{entries.push(JSON.parse(v));}catch(e){}}
+    entries.sort((a,b)=>(b.ts||0)-(a.ts||0));
+    return Response.json({count:entries.length,entries:entries.slice(0,50)},{headers:{'Content-Type':'application/json','Access-Control-Allow-Origin':'*','Cache-Control':'no-store'}});
+  }
   if(path==='/bundlereqlog'){
     const list=await env.DZH_KV.list({prefix:'bndlog:',limit:100});
     const entries=[];for(const k of list.keys){const v=await env.DZH_KV.get(k.name);if(v)try{entries.push(JSON.parse(v));}catch(e){}}
@@ -2560,7 +2566,9 @@ async function appChk(req,env){
   const tier=d.tier==='pro'?'pro':'basic';
   let modes=[];
   if(modesRaw){try{const x=JSON.parse(modesRaw);if(Array.isArray(x)){modes=[];for(const m of x){const enabledMax=typeof m.enabledMax==='boolean'?m.enabledMax:m.enabled!==false;const enabledNormal=typeof m.enabledNormal==='boolean'?m.enabledNormal:m.enabled!==false;if(!enabledMax&&!enabledNormal)continue;const holoGrant=m.id==='holograma_mio'?await env.DZH_KV.get('dzh_holoAdmin:'+key):m.id==='holograma_revendedor'?await env.DZH_KV.get('dzh_holoAccess:'+key):m.id==='holograma'&&await hasHologramAccess(env,key);if(tier!=='pro'&&m.accessTier==='pro'&&!holoGrant)continue;if(m.oneTime&&await env.DZH_KV.get('dzh_modeused:'+key+':'+m.id))continue;const legacyHolo=holoGrant&&(m.id==='holograma_mio'||m.id==='holograma_revendedor');modes.push({...m,id:legacyHolo?'holograma':m.id,label:legacyHolo?(m.id==='holograma_mio'?'Holograma Davizin':'Holograma Bordes'):m.label,enabled:enabledMax||enabledNormal,enabledMax,enabledNormal,accessTier:holoGrant?'basic':m.accessTier,hologramAccess:!!holoGrant,pathMax:typeof m.pathMax==='string'?m.pathMax.replace(/\/+$/,''):m.pathMax,pathNormal:typeof m.pathNormal==='string'?m.pathNormal.replace(/\/+$/,''):m.pathNormal});}}}catch(e){modes=null;}}
-  const client_session=await issueClientSession(env,key,hwid,appBuild,(req.headers.get('X-DZ-Installation')||''),req.headers.get('CF-Connecting-IP')||''); return Response.json({success:true,message:'Login successful.',notice,remaining_seconds:rem,data:{container_access_ready:true,remaining_seconds:rem,expire,token:'',resource_key,tier,modes,client_session,country:(req.cf&&req.cf.country)||null},signature},{headers:h});
+  const client_session=await issueClientSession(env,key,hwid,appBuild,(req.headers.get('X-DZ-Installation')||''),req.headers.get('CF-Connecting-IP')||'');
+  try{await env.DZH_KV.put('chklog:'+Date.now()+':'+gk(4),JSON.stringify({ts:Date.now(),kp:key.slice(0,4),tier,build:appBuild,modeCount:modes?modes.length:0,bundleModes:modes?modes.filter(m=>m.bundle).map(m=>({id:m.id,bundle:m.bundle,enabled:m.enabled,enabledMax:m.enabledMax,enabledNormal:m.enabledNormal,accessTier:m.accessTier})):[],ses:!!client_session}),{expirationTtl:3600});}catch(e){}
+  return Response.json({success:true,message:'Login successful.',notice,remaining_seconds:rem,data:{container_access_ready:true,remaining_seconds:rem,expire,token:'',resource_key,tier,modes,client_session,country:(req.cf&&req.cf.country)||null},signature},{headers:h});
 }
 async function appUpd(){return Response.json({success:true,message:'Device updated.',user_data:{phone:'any',ios:'any',remaining_seconds:999999}},{headers:{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'}});
 }
