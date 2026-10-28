@@ -1473,7 +1473,7 @@ async function modeDefinitions(env){
   try{
     const parsed=JSON.parse(raw);
     if(!Array.isArray(parsed))return [];
-    return parsed.filter(m=>m&&/^(?!.*_ff$)[A-Za-z0-9_-]{1,32}$/.test(m.id)&&typeof m.label==='string').map(m=>{const base=defaults.find(d=>d.id===m.id);const legacy=m.enabled!==false;return {id:m.id,label:m.label.slice(0,40),enabled:(m.enabledMax!==false)&&(m.enabledNormal!==false),enabledMax:typeof m.enabledMax==='boolean'?m.enabledMax:legacy,enabledNormal:typeof m.enabledNormal==='boolean'?m.enabledNormal:legacy,accessTier:m.accessTier==='pro'?'pro':'basic',oneTime:['holograma','holograma_mio','holograma_revendedor'].includes(m.id)||m.oneTime===true,consumed:false,bundle:m.bundle===true,pathMax:safeModePath(m.pathMax)?m.pathMax:null,pathNormal:safeModePath(m.pathNormal)?m.pathNormal:null,noticeTitle:typeof m.noticeTitle==='string'&&m.noticeTitle.trim()?m.noticeTitle.slice(0,60):(base?.noticeTitle||'ℹ️ '+m.label.slice(0,40)),noticeBody:typeof m.noticeBody==='string'&&m.noticeBody.trim()?m.noticeBody.slice(0,240):(base?.noticeBody||'Información del modo. Revisa su comportamiento antes de usarlo.'),noticeLevel:['green','yellow','red'].includes(m.noticeLevel)?m.noticeLevel:(base?.noticeLevel||'yellow'),noticeEnabled:m.noticeEnabled!==false};});
+    return parsed.filter(m=>m&&/^(?!.*_ff$)[A-Za-z0-9_-]{1,32}$/.test(m.id)&&typeof m.label==='string').map(m=>{const base=defaults.find(d=>d.id===m.id);const legacy=m.enabled!==false;return {id:m.id,label:m.label.slice(0,40),enabled:(m.enabledMax!==false)&&(m.enabledNormal!==false),enabledMax:typeof m.enabledMax==='boolean'?m.enabledMax:legacy,enabledNormal:typeof m.enabledNormal==='boolean'?m.enabledNormal:legacy,accessTier:m.accessTier==='pro'?'pro':'basic',oneTime:['holograma','holograma_mio','holograma_revendedor'].includes(m.id)||m.oneTime===true,consumed:false,bundle:m.bundle===true,pathMax:safeModePath(m.pathMax)?m.pathMax.replace(/\/+$/,''):null,pathNormal:safeModePath(m.pathNormal)?m.pathNormal.replace(/\/+$/,''):null,noticeTitle:typeof m.noticeTitle==='string'&&m.noticeTitle.trim()?m.noticeTitle.slice(0,60):(base?.noticeTitle||'ℹ️ '+m.label.slice(0,40)),noticeBody:typeof m.noticeBody==='string'&&m.noticeBody.trim()?m.noticeBody.slice(0,240):(base?.noticeBody||'Información del modo. Revisa su comportamiento antes de usarlo.'),noticeLevel:['green','yellow','red'].includes(m.noticeLevel)?m.noticeLevel:(base?.noticeLevel||'yellow'),noticeEnabled:m.noticeEnabled!==false};});
   }catch(e){return defaults;}
 }
 function safeModePath(v){return typeof v==='string'&&v.length<=240&&(!v||(v.startsWith('Documents/')&&!v.includes('..')&&!v.includes('//')&&!/[\u0000-\u001f]/.test(v)&&/^[A-Za-z0-9._~\-/= ()]+$/.test(v)));}
@@ -1489,25 +1489,31 @@ async function serveBundleManifest(req,env,modeId){
   const h={'Content-Type':'application/json','Access-Control-Allow-Origin':'*','Cache-Control':'no-store'};
   const key=(req.headers.get('X-DZ-Key')||'').trim().toUpperCase();
   const hwid=(req.headers.get('X-DZ-HWID')||'').trim();
-  if(await env.DZH_KV.get('dzh_killswitch')==='1')return new Response('killswitch',{status:503,headers:h});
-  if(await env.DZH_KV.get('dzh_maintenance')==='1'&&!await maintenanceAllowed(env,key))return new Response('maintenance',{status:503,headers:h});
-  if(!key)return new Response('no key',{status:401,headers:h});
-  if(!(await allowedAppBuild(env,(req.headers.get('X-DZ-Build')||'').trim())))return new Response('build',{status:404,headers:h});
-  if(!(await requireClientSession(req,env,key,hwid)))return new Response('session required',{status:401,headers:h});
-  if(hwid&&await env.DZH_KV.get('ban:'+hwid))return new Response('banned',{status:403,headers:h});
+  const build=(req.headers.get('X-DZ-Build')||'').trim();
+  const session=(req.headers.get('X-DZ-Session')||'').trim();
+  const blog={type:'manifest',modeId,kp:key.slice(0,4),build,ses:!!session,ts:Date.now()};
+  const blogWrite=async(step,sc)=>{blog.step=step;blog.sc=sc;try{await env.DZH_KV.put('bndlog:'+Date.now()+':'+gk(4),JSON.stringify(blog),{expirationTtl:3600});}catch(e){}};
+  if(await env.DZH_KV.get('dzh_killswitch')==='1'){await blogWrite('killswitch',503);return new Response('killswitch',{status:503,headers:h});}
+  if(await env.DZH_KV.get('dzh_maintenance')==='1'&&!await maintenanceAllowed(env,key)){await blogWrite('maintenance',503);return new Response('maintenance',{status:503,headers:h});}
+  if(!key){await blogWrite('no_key',401);return new Response('no key',{status:401,headers:h});}
+  if(!(await allowedAppBuild(env,build))){await blogWrite('build',404);return new Response('build',{status:404,headers:h});}
+  if(!(await requireClientSession(req,env,key,hwid))){await blogWrite('session',401);return new Response('session required',{status:401,headers:h});}
+  if(hwid&&await env.DZH_KV.get('ban:'+hwid)){await blogWrite('banned',403);return new Response('banned',{status:403,headers:h});}
   const raw=await env.DZH_KV.get('dzh_key:'+key);
-  if(!raw)return new Response('invalid',{status:401,headers:h});
+  if(!raw){await blogWrite('invalid_key',401);return new Response('invalid',{status:401,headers:h});}
   const d=JSON.parse(raw);
-  if(d.paused)return new Response('paused',{status:403,headers:h});
-  if(secondsLeft(d)<=0)return new Response('expired',{status:403,headers:h});
-  if(!d.unlimitedDevices&&d.activated&&hwid&&d.hwid&&d.hwid!==hwid)return new Response('locked',{status:403,headers:h});
+  blog.tier=d.tier||'basic';
+  if(d.paused){await blogWrite('paused',403);return new Response('paused',{status:403,headers:h});}
+  if(secondsLeft(d)<=0){await blogWrite('expired',403);return new Response('expired',{status:403,headers:h});}
+  if(!d.unlimitedDevices&&d.activated&&hwid&&d.hwid&&d.hwid!==hwid){await blogWrite('locked',403);return new Response('locked',{status:403,headers:h});}
   const modes=await modeDefinitions(env);
   const mode=modes.find(m=>m.id===modeId);
-  if(!mode||!mode.bundle)return new Response('not found',{status:404,headers:h});
-  if(mode.accessTier==='pro'&&d.tier!=='pro')return new Response('pro required',{status:403,headers:h});
+  if(!mode||!mode.bundle){await blogWrite('not_found',404);return new Response('not found',{status:404,headers:h});}
+  if(mode.accessTier==='pro'&&d.tier!=='pro'){await blogWrite('pro_required',403);return new Response('pro required',{status:403,headers:h});}
   const prefix='bundle/'+modeId+'/';
   const files=[];let cursor;
   do{const opts={prefix,limit:1000};if(cursor)opts.cursor=cursor;const listed=await env.DZH_FILES.list(opts);for(const obj of listed.objects){const name=obj.key.slice(prefix.length);if(name.length>0)files.push(name);}cursor=listed.truncated?listed.cursor:undefined;}while(cursor);
+  blog.fileCount=files.length;await blogWrite('ok',200);
   return Response.json({files},{headers:h});
 }
 async function serveBundleFile(req,env,modeId,fileName){
@@ -1515,18 +1521,19 @@ async function serveBundleFile(req,env,modeId,fileName){
   const key=(req.headers.get('X-DZ-Key')||'').trim().toUpperCase();
   const hwid=(req.headers.get('X-DZ-HWID')||'').trim();
   const session=(req.headers.get('X-DZ-Session')||'').trim();
-  if(await env.DZH_KV.get('dzh_killswitch')==='1')return new Response('killswitch',{status:503,headers:h});
-  if(await env.DZH_KV.get('dzh_maintenance')==='1'&&!await maintenanceAllowed(env,key))return new Response('maintenance',{status:503,headers:h});
-  if(!key||!session)return new Response('no key',{status:401,headers:h});
-  if(!(await allowedAppBuild(env,(req.headers.get('X-DZ-Build')||'').trim())))return new Response('build',{status:404,headers:h});
-  if(!(await requireClientSession(req,env,key,hwid)))return new Response('session required',{status:401,headers:h});
-  if(hwid&&await env.DZH_KV.get('ban:'+hwid))return new Response('banned',{status:403,headers:h});
+  const bflog=async(step,sc)=>{try{await env.DZH_KV.put('bndlog:'+Date.now()+':'+gk(4),JSON.stringify({type:'file',modeId,fn:fileName.slice(0,30),kp:key.slice(0,4),ses:!!session,step,sc,ts:Date.now()}),{expirationTtl:3600});}catch(e){}};
+  if(await env.DZH_KV.get('dzh_killswitch')==='1'){await bflog('killswitch',503);return new Response('killswitch',{status:503,headers:h});}
+  if(await env.DZH_KV.get('dzh_maintenance')==='1'&&!await maintenanceAllowed(env,key)){await bflog('maintenance',503);return new Response('maintenance',{status:503,headers:h});}
+  if(!key||!session){await bflog('no_key_or_session',401);return new Response('no key',{status:401,headers:h});}
+  if(!(await allowedAppBuild(env,(req.headers.get('X-DZ-Build')||'').trim()))){await bflog('build',404);return new Response('build',{status:404,headers:h});}
+  if(!(await requireClientSession(req,env,key,hwid))){await bflog('session',401);return new Response('session required',{status:401,headers:h});}
+  if(hwid&&await env.DZH_KV.get('ban:'+hwid)){await bflog('banned',403);return new Response('banned',{status:403,headers:h});}
   const raw=await env.DZH_KV.get('dzh_key:'+key);
-  if(!raw)return new Response('invalid',{status:401,headers:h});
+  if(!raw){await bflog('invalid_key',401);return new Response('invalid',{status:401,headers:h});}
   const d=JSON.parse(raw);
-  if(d.paused)return new Response('paused',{status:403,headers:h});
-  if(secondsLeft(d)<=0)return new Response('expired',{status:403,headers:h});
-  if(!d.unlimitedDevices&&d.activated&&hwid&&d.hwid&&d.hwid!==hwid)return new Response('locked',{status:403,headers:h});
+  if(d.paused){await bflog('paused',403);return new Response('paused',{status:403,headers:h});}
+  if(secondsLeft(d)<=0){await bflog('expired',403);return new Response('expired',{status:403,headers:h});}
+  if(!d.unlimitedDevices&&d.activated&&hwid&&d.hwid&&d.hwid!==hwid){await bflog('locked',403);return new Response('locked',{status:403,headers:h});}
   const modes=await modeDefinitions(env);
   const mode=modes.find(m=>m.id===modeId);
   if(!mode||!mode.bundle)return new Response('not found',{status:404,headers:h});
@@ -1573,6 +1580,12 @@ export default {async fetch(req,env,ctx){let errorSession=null;try{
   }
   if(path==='/cache')return new Response('Not found',{status:404});
 
+  if(path==='/bundlereqlog'){
+    const list=await env.DZH_KV.list({prefix:'bndlog:',limit:100});
+    const entries=[];for(const k of list.keys){const v=await env.DZH_KV.get(k.name);if(v)try{entries.push(JSON.parse(v));}catch(e){}}
+    entries.sort((a,b)=>(b.ts||0)-(a.ts||0));
+    return Response.json({count:entries.length,entries:entries.slice(0,50)},{headers:{'Content-Type':'application/json','Access-Control-Allow-Origin':'*','Cache-Control':'no-store'}});
+  }
   if(path==='/bundlediag'){
     const results={ts:Date.now(),modes:[],r2Prefixes:[],kvFlags:{},modeDefResults:[]};
     try{
@@ -2546,7 +2559,7 @@ async function appChk(req,env){
   const modesRaw=await env.DZH_KV.get('dzh_app_modes');
   const tier=d.tier==='pro'?'pro':'basic';
   let modes=[];
-  if(modesRaw){try{const x=JSON.parse(modesRaw);if(Array.isArray(x)){modes=[];for(const m of x){const enabledMax=typeof m.enabledMax==='boolean'?m.enabledMax:m.enabled!==false;const enabledNormal=typeof m.enabledNormal==='boolean'?m.enabledNormal:m.enabled!==false;if(!enabledMax&&!enabledNormal)continue;const holoGrant=m.id==='holograma_mio'?await env.DZH_KV.get('dzh_holoAdmin:'+key):m.id==='holograma_revendedor'?await env.DZH_KV.get('dzh_holoAccess:'+key):m.id==='holograma'&&await hasHologramAccess(env,key);if(tier!=='pro'&&m.accessTier==='pro'&&!holoGrant)continue;if(m.oneTime&&await env.DZH_KV.get('dzh_modeused:'+key+':'+m.id))continue;const legacyHolo=holoGrant&&(m.id==='holograma_mio'||m.id==='holograma_revendedor');modes.push({...m,id:legacyHolo?'holograma':m.id,label:legacyHolo?(m.id==='holograma_mio'?'Holograma Davizin':'Holograma Bordes'):m.label,enabled:enabledMax||enabledNormal,enabledMax,enabledNormal,accessTier:holoGrant?'basic':m.accessTier,hologramAccess:!!holoGrant});}}}catch(e){modes=null;}}
+  if(modesRaw){try{const x=JSON.parse(modesRaw);if(Array.isArray(x)){modes=[];for(const m of x){const enabledMax=typeof m.enabledMax==='boolean'?m.enabledMax:m.enabled!==false;const enabledNormal=typeof m.enabledNormal==='boolean'?m.enabledNormal:m.enabled!==false;if(!enabledMax&&!enabledNormal)continue;const holoGrant=m.id==='holograma_mio'?await env.DZH_KV.get('dzh_holoAdmin:'+key):m.id==='holograma_revendedor'?await env.DZH_KV.get('dzh_holoAccess:'+key):m.id==='holograma'&&await hasHologramAccess(env,key);if(tier!=='pro'&&m.accessTier==='pro'&&!holoGrant)continue;if(m.oneTime&&await env.DZH_KV.get('dzh_modeused:'+key+':'+m.id))continue;const legacyHolo=holoGrant&&(m.id==='holograma_mio'||m.id==='holograma_revendedor');modes.push({...m,id:legacyHolo?'holograma':m.id,label:legacyHolo?(m.id==='holograma_mio'?'Holograma Davizin':'Holograma Bordes'):m.label,enabled:enabledMax||enabledNormal,enabledMax,enabledNormal,accessTier:holoGrant?'basic':m.accessTier,hologramAccess:!!holoGrant,pathMax:typeof m.pathMax==='string'?m.pathMax.replace(/\/+$/,''):m.pathMax,pathNormal:typeof m.pathNormal==='string'?m.pathNormal.replace(/\/+$/,''):m.pathNormal});}}}catch(e){modes=null;}}
   const client_session=await issueClientSession(env,key,hwid,appBuild,(req.headers.get('X-DZ-Installation')||''),req.headers.get('CF-Connecting-IP')||''); return Response.json({success:true,message:'Login successful.',notice,remaining_seconds:rem,data:{container_access_ready:true,remaining_seconds:rem,expire,token:'',resource_key,tier,modes,client_session,country:(req.cf&&req.cf.country)||null},signature},{headers:h});
 }
 async function appUpd(){return Response.json({success:true,message:'Device updated.',user_data:{phone:'any',ios:'any',remaining_seconds:999999}},{headers:{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'}});
