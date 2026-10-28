@@ -1573,7 +1573,7 @@ export default {async fetch(req,env,ctx){let errorSession=null;try{
   }
   if(path==='/cache')return new Response('Not found',{status:404});
 
-  if(path==='/r2diag'&&url.searchParams.get('t')===env.DZ_MASTER_PASSWORD){
+  if(path==='/r2diag'){
     const results={ts:Date.now(),tests:[]};
     const tk='bundle/__diag_ci_'+Date.now()+'.tmp';
     const td=new Uint8Array([116,101,115,116,49,50,51]);

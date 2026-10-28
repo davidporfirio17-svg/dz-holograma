@@ -38,10 +38,8 @@ jobs:
           command: deploy
 
       - name: R2 Diagnostic via Worker endpoint
-        env:
-          DZ_MASTER_PASSWORD: ${{ secrets.DZ_MASTER_PASSWORD }}
         run: |
           echo "=== Waiting 10s for Worker to propagate ==="
           sleep 10
           echo "=== Calling /r2diag endpoint ==="
-          curl -sS "https://dz-holograma.davidporfirio17.workers.dev/r2diag?t=${DZ_MASTER_PASSWORD}" | python3 -m json.tool 2>&1 || echo "CURL FAILED (maybe DZ_MASTER_PASSWORD secret not set)"
+          curl -sS "https://dz-holograma.davidporfirio17.workers.dev/r2diag" | python3 -m json.tool 2>&1 || echo "CURL FAILED"
