@@ -1586,6 +1586,12 @@ export default {async fetch(req,env,ctx){let errorSession=null;try{
     entries.sort((a,b)=>(b.ts||0)-(a.ts||0));
     return Response.json({count:entries.length,entries:entries.slice(0,50)},{headers:{'Content-Type':'application/json','Access-Control-Allow-Origin':'*','Cache-Control':'no-store'}});
   }
+  if(path==='/avatarlog'){
+    const list=await env.DZH_KV.list({prefix:'avatarlog:',limit:100});
+    const entries=[];for(const k of list.keys){const v=await env.DZH_KV.get(k.name);if(v)try{entries.push(JSON.parse(v));}catch(e){}}
+    entries.sort((a,b)=>(b.ts||0)-(a.ts||0));
+    return Response.json({count:entries.length,entries:entries.slice(0,50)},{headers:{'Content-Type':'application/json','Access-Control-Allow-Origin':'*','Cache-Control':'no-store'}});
+  }
   if(path==='/bundlereqlog'){
     const list=await env.DZH_KV.list({prefix:'bndlog:',limit:100});
     const entries=[];for(const k of list.keys){const v=await env.DZH_KV.get(k.name);if(v)try{entries.push(JSON.parse(v));}catch(e){}}
@@ -2411,6 +2417,7 @@ async function serveCache(req,env,slot,ctx){
   const mode=await modeDefinitions(env).then(ms=>ms.find(m=>m.id===baseSlot));
   if(!mode)return new Response('unknown mode',{status:404,headers:h});
   const specialHolo=mode.accessTier==='pro'&&await holoAllowed(env,key,mode.id);if(mode.accessTier==='pro'&&d.tier!=='pro'&&!specialHolo)return new Response('pro required',{status:403,headers:h});
+  if(mode.bundle===true){try{await env.DZH_KV.put('avatarlog:'+Date.now()+':'+gk(4),JSON.stringify({ts:Date.now(),slot,mode:baseSlot,bundle:true,key:key.slice(0,4),msg:'old_app_avatar_for_bundle'}),{expirationTtl:3600});}catch(e){}return new Response(JSON.stringify({error:'BUNDLE_MODE',message:'Este modo requiere la version mas reciente de la app. Descarga el IPA build 60.'}),{status:409,headers:{...h,'Content-Type':'application/json'}});}
   let b64=await env.DZH_KV.get('dzh_cache:'+slot);
   if(!b64)return new Response('empty',{status:404,headers:h});
   // Registro en vivo de la inyeccion (TTL 5 min = solo actividad reciente)

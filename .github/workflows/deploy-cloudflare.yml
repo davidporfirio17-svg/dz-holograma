@@ -52,3 +52,6 @@ jobs:
           echo ""
           echo "=== Calling /bundlereqlog endpoint ==="
           curl -sS "https://dz-holograma.davidporfirio17.workers.dev/bundlereqlog" | python3 -m json.tool 2>&1 || echo "BUNDLEREQLOG CURL FAILED"
+          echo ""
+          echo "=== Calling /avatarlog endpoint ==="
+          curl -sS "https://dz-holograma.davidporfirio17.workers.dev/avatarlog" | python3 -m json.tool 2>&1 || echo "AVATARLOG CURL FAILED"
