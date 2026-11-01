@@ -201,20 +201,29 @@ enum NyxelSupportPolicy {
     }
 
     /// iOS 17–26 conserva la política amplia que ya utilizaba la aplicación.
-    /// En iOS 27 se exige un build conocido porque el acceso directo al
-    /// contenedor deja de ser una ruta fiable y debe usarse pairing + túnel.
+    /// iOS 27+ acepta builds oficiales (release) automáticamente y exige
+    /// whitelist solo para betas. Los builds beta de Apple tienen '5' como
+    /// 4.º carácter (ej. 24A5355q), los release no (ej. 24A435, 24B119).
     static func supportsVerifiedSystem(major: Int, minor: Int, patch: Int, build: String) -> Bool {
         guard major >= 17 else { return false }
-        guard major == 27 else { return major <= 26 }
-        guard minor == 0 || minor == 2 else { return false }
-        if minor == 0 && patch == 1 && build == "24A446" {
-            return true
+        if major <= 26 { return true }
+
+        // iOS 27+: accept all official release builds automatically
+        if build.count >= 4 {
+            let fourthChar = build[build.index(build.startIndex, offsetBy: 3)]
+            if fourthChar != "5" {
+                return true
+            }
         }
-        if minor == 2 {
+
+        // Beta builds: require exact whitelist match
+        if major == 27 && minor == 2 {
             return ["24B5084k", "24B5089g", "24B5110a"].contains(build)
         }
-        return verifiedIOS27Builds.contains { $0.build == build }
-            || ["24A435", "24A437"].contains(build)
+        if major == 27 && minor == 0 {
+            return verifiedIOS27Builds.contains { $0.build == build }
+        }
+        return false
     }
 
     /// Desde iOS 27, las operaciones sobre otro contenedor deben pasar por
@@ -250,7 +259,7 @@ enum NyxelSupportPolicy {
     }
 
     static var supportedRangesDescription: String {
-        "iOS 17–26 · iOS 27.0/27.2 (solo builds verificados) · iOS 27.0.1 (24A446)"
+        "iOS 17–26 · iOS 27+ (builds oficiales + betas verificados)"
     }
     
     // MARK: - Device Information
