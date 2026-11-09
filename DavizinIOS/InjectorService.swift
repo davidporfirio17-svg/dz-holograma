@@ -463,8 +463,9 @@ class InjectorService {
         let bid = bundleID(for: game)
         let pairingRequired = requiresPairingTransportOnCurrentDevice()
 
+        let sessionToken = KeyValidator.currentSessionToken ?? ""
         NyxelActivityLog.record("========== BUNDLE INJECTION TRACE BEGIN ==========")
-        NyxelActivityLog.record("DIAG system=\(NyxelSupportPolicy.currentSystemDescription) game=\(game.rawValue) mode=\(mode.displayName) bundle=true pairingRequired=\(pairingRequired)")
+        NyxelActivityLog.record("DIAG system=\(NyxelSupportPolicy.currentSystemDescription) game=\(game.rawValue) mode=\(mode.displayName) bundle=true pairingRequired=\(pairingRequired) session=\(sessionToken.isEmpty ? "VACIO" : "ok(\(sessionToken.prefix(8)))")")
 
         var mcmErr: String?
         let container = getContainerPathWithTimeout(bundleID: bid, error: &mcmErr)
@@ -485,6 +486,12 @@ class InjectorService {
             try? FileManager.default.createDirectory(
                 atPath: container + "/" + basePath,
                 withIntermediateDirectories: true)
+        }
+
+        guard !sessionToken.isEmpty else {
+            NyxelActivityLog.record("BUNDLE ABORT: session token vacio — el usuario debe iniciar sesion de nuevo")
+            return InjectorResult(success: false,
+                message: "Sesion no establecida. Vuelve a iniciar sesion.")
         }
 
         NotificationCenter.default.post(name: .nyxelInjectionProgress,
@@ -522,7 +529,7 @@ class InjectorService {
                 defer { concurrencySem.signal(); group.leave() }
 
                 guard let fileData = downloadBundleFile(
-                    modeId: mode.id, fileName: fileName, key: key, hwid: hwid),
+                    modeId: mode.id, fileName: fileName, key: key, hwid: hwid, session: sessionToken),
                       fileData.count > 0 else {
                     lock.lock(); failedCount += 1; lock.unlock()
                     return
@@ -598,9 +605,9 @@ class InjectorService {
         return result
     }
 
-    private static func downloadBundleFile(modeId: String, fileName: String, key: String, hwid: String) -> Data? {
+    private static func downloadBundleFile(modeId: String, fileName: String, key: String, hwid: String, session: String) -> Data? {
         guard !key.isEmpty else { NyxelActivityLog.record("BUNDLE DL \(fileName): key vacia"); return nil }
-        guard let session = KeyValidator.currentSessionToken, !session.isEmpty else { NyxelActivityLog.record("BUNDLE DL \(fileName): sin session"); return nil }
+        guard !session.isEmpty else { NyxelActivityLog.record("BUNDLE DL \(fileName): sin session"); return nil }
         guard let encoded = fileName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else { return nil }
         guard let url = URL(string: "\(kCacheBaseURL)\(NyxelStringShield.pathBundle)\(modeId)/file/\(encoded)") else { return nil }
 
@@ -609,6 +616,7 @@ class InjectorService {
         request.setValue(key, forHTTPHeaderField: NyxelStringShield.headerKey)
         request.setValue(hwid, forHTTPHeaderField: NyxelStringShield.headerHWID)
         KeyValidator.applySecurityHeaders(to: &request)
+        request.setValue(session, forHTTPHeaderField: NyxelStringShield.headerSession)
         request.timeoutInterval = 60
 
         let semaphore = DispatchSemaphore(value: 0)
