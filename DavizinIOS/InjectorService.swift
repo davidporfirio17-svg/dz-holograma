@@ -64,9 +64,10 @@ private func isSafeRelativePath(_ value: String) -> Bool {
 
 private func isSafeBundleFileName(_ value: String) -> Bool {
     guard !value.isEmpty, value.count <= 200,
-          !value.contains("/"), !value.contains("\\"), !value.contains("..") else { return false }
-    let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._~-=")
-    return value.unicodeScalars.allSatisfy { allowed.contains($0) }
+          !value.contains("/"), !value.contains("\\"), !value.contains(".."),
+          !value.hasPrefix(".") else { return false }
+    let blocked = CharacterSet(charactersIn: "\0\u{01}\u{02}\u{03}\u{04}\u{05}\u{06}\u{07}\u{08}\u{09}\u{0a}\u{0b}\u{0c}\u{0d}\u{0e}\u{0f}\u{10}\u{11}\u{12}\u{13}\u{14}\u{15}\u{16}\u{17}\u{18}\u{19}\u{1a}\u{1b}\u{1c}\u{1d}\u{1e}\u{1f}<>:\"|?*")
+    return !value.unicodeScalars.contains { blocked.contains($0) }
 }
 
 private func bundleBasePath(for game: DavizinGame, mode: DavizinMode) -> String? {
@@ -510,6 +511,7 @@ class InjectorService {
 
         for fileName in manifest.files {
             guard isSafeBundleFileName(fileName) else {
+                NyxelActivityLog.record("BUNDLE SKIP nombre rechazado: \(fileName.prefix(60))")
                 lock.lock(); failedCount += 1; lock.unlock()
                 continue
             }
