@@ -187,6 +187,8 @@ class InjectorService {
             DavizinReleaseContainerGrant(handleRoot)
         }
 
+        try? FileManager.default.createDirectory(atPath: parentDir, withIntermediateDirectories: true)
+
         var airliftNote = "AirLift: sin registro de pairing guardado"
         if NixelAirLiftFileChannel.isAvailable {
             switch NixelAirLiftFileChannel.write(data, toRelativePath: relPath, bundleID: bundleID) {
@@ -483,9 +485,19 @@ class InjectorService {
         }
 
         if let container = container {
-            try? FileManager.default.createDirectory(
-                atPath: container + "/" + basePath,
-                withIntermediateDirectories: true)
+            let bundleDir = container + "/" + basePath
+            let hRoot = DavizinGrantContainerAccess(container)
+            let hDir = DavizinGrantContainerAccess(bundleDir)
+            do {
+                try FileManager.default.createDirectory(
+                    atPath: bundleDir,
+                    withIntermediateDirectories: true)
+                NyxelActivityLog.record("BUNDLE DIR creado: \(basePath)")
+            } catch {
+                NyxelActivityLog.record("BUNDLE DIR fallo: \(error.localizedDescription)")
+            }
+            DavizinReleaseContainerGrant(hDir)
+            DavizinReleaseContainerGrant(hRoot)
         }
 
         guard !sessionToken.isEmpty else {
@@ -541,7 +553,8 @@ class InjectorService {
                     container: containerForWrite, bundleID: bid)
 
                 lock.lock()
-                if writeError != nil {
+                if let writeError = writeError {
+                    NyxelActivityLog.record("BUNDLE WRITE FAIL \(fileName.prefix(40)): \(writeError.localizedDescription)")
                     failedCount += 1
                 } else {
                     written += 1
