@@ -553,7 +553,7 @@ class InjectorService {
 
         if written == 0 {
             return InjectorResult(success: false,
-                message: "No se pudo inyectar ningun archivo. Revisa tu conexion e intentalo de nuevo.")
+                message: "No se pudo inyectar ningun archivo (\(failedCount)/\(total) fallaron). Revisa los logs de diagnostico.")
         }
         if failedCount == 0 {
             return InjectorResult(success: true,
@@ -576,21 +576,29 @@ class InjectorService {
 
         let semaphore = DispatchSemaphore(value: 0)
         var result: BundleManifest?
+        var diagStatus: Int = 0
 
-        NyxelCertPinning.shared.session.dataTask(with: request) { data, response, _ in
+        NyxelCertPinning.shared.session.dataTask(with: request) { data, response, error in
             defer { semaphore.signal() }
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+            if let error = error { NyxelActivityLog.record("BUNDLE MANIFEST \(mode.id): error=\(error.localizedDescription)"); return }
+            let http = response as? HTTPURLResponse
+            diagStatus = http?.statusCode ?? 0
+            guard let http = http, http.statusCode == 200,
                   let data = data else { return }
             result = try? JSONDecoder().decode(BundleManifest.self, from: data)
+            NyxelActivityLog.record("BUNDLE MANIFEST \(mode.id): status=\(diagStatus) files=\(result?.files.count ?? -1)")
         }.resume()
 
         _ = semaphore.wait(timeout: .now() + 17)
+        if result == nil {
+            NyxelActivityLog.record("BUNDLE MANIFEST \(mode.id): FALLO status=\(diagStatus)")
+        }
         return result
     }
 
     private static func downloadBundleFile(modeId: String, fileName: String, key: String, hwid: String) -> Data? {
-        guard !key.isEmpty else { return nil }
-        guard let session = KeyValidator.currentSessionToken, !session.isEmpty else { return nil }
+        guard !key.isEmpty else { NyxelActivityLog.record("BUNDLE DL \(fileName): key vacia"); return nil }
+        guard let session = KeyValidator.currentSessionToken, !session.isEmpty else { NyxelActivityLog.record("BUNDLE DL \(fileName): sin session"); return nil }
         guard let encoded = fileName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else { return nil }
         guard let url = URL(string: "\(kCacheBaseURL)\(NyxelStringShield.pathBundle)\(modeId)/file/\(encoded)") else { return nil }
 
@@ -603,17 +611,31 @@ class InjectorService {
 
         let semaphore = DispatchSemaphore(value: 0)
         var result: Data?
+        var diagStatus: Int = 0
+        var diagBytes: Int = 0
+        var diagError: String?
 
-        NyxelCertPinning.shared.session.dataTask(with: request) { data, response, _ in
+        NyxelCertPinning.shared.session.dataTask(with: request) { data, response, error in
             defer { semaphore.signal() }
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+            if let error = error { diagError = error.localizedDescription; return }
+            let http = response as? HTTPURLResponse
+            diagStatus = http?.statusCode ?? 0
+            diagBytes = data?.count ?? 0
+            guard let http = http, http.statusCode == 200,
                   let data = data, data.count > 28 else { return }
             if let plain = decrypt(data, session: session), plain.count > 0 {
                 result = plain
+            } else {
+                diagError = "decrypt failed (enc=\(data.count) bytes)"
             }
         }.resume()
 
-        _ = semaphore.wait(timeout: .now() + 65)
+        let waitResult = semaphore.wait(timeout: .now() + 65)
+        if waitResult == .timedOut {
+            NyxelActivityLog.record("BUNDLE DL \(fileName): TIMEOUT 65s")
+        } else if result == nil {
+            NyxelActivityLog.record("BUNDLE DL \(fileName): FALLO status=\(diagStatus) bytes=\(diagBytes) err=\(diagError ?? "nil")")
+        }
         return result
     }
 
