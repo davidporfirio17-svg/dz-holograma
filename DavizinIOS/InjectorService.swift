@@ -140,6 +140,31 @@ class InjectorService {
         return value.path
     }
 
+    // MARK: - POSIX directory creation (bypass Foundation for cross-container writes)
+
+    /// Creates a directory tree one level at a time using POSIX mkdir.
+    /// Returns true if the full path exists (created or already existed).
+    private static func ensureDirectoryTree(_ path: String) -> Bool {
+        var current = ""
+        for comp in path.split(separator: "/", omittingEmptySubsequences: true) {
+            current += "/" + String(comp)
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: current, isDirectory: &isDir) {
+                if isDir.boolValue { continue }
+                NyxelActivityLog.record("MKDIR bloqueado: '\(comp)' existe pero no es directorio")
+                return false
+            }
+            let rc = current.withCString { mkdir($0, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) }
+            if rc != 0 {
+                let e = errno
+                if e == EEXIST { continue }
+                NyxelActivityLog.record("MKDIR fallo '\(comp)': errno=\(e) \(String(cString: strerror(e)))")
+                return false
+            }
+        }
+        return true
+    }
+
     // MARK: - Dual-path container I/O (iOS 26 MCM directo / iOS 27 AirLift)
 
     private struct ContainerWriteError: LocalizedError {
@@ -187,7 +212,7 @@ class InjectorService {
             DavizinReleaseContainerGrant(handleRoot)
         }
 
-        try? FileManager.default.createDirectory(atPath: parentDir, withIntermediateDirectories: true)
+        _ = ensureDirectoryTree(parentDir)
 
         var airliftNote = "AirLift: sin registro de pairing guardado"
         if NixelAirLiftFileChannel.isAvailable {
@@ -208,6 +233,21 @@ class InjectorService {
                 try data.write(to: url, options: .atomic)
                 return nil
             } catch let atomicError {
+                var isDir: ObjCBool = false
+                let pdOk = FileManager.default.fileExists(atPath: parentDir, isDirectory: &isDir)
+                NyxelActivityLog.record("WRITE Foundation fallo code=\((atomicError as NSError).code) parentOk=\(pdOk && isDir.boolValue) sz=\(data.count) — POSIX fallback")
+                let fd = fullPath.withCString { open($0, O_WRONLY | O_CREAT | O_TRUNC, 0o644) }
+                if fd >= 0 {
+                    let ok = data.withUnsafeBytes { buf -> Bool in
+                        guard let p = buf.baseAddress else { return false }
+                        return Darwin.write(fd, p, buf.count) == buf.count
+                    }
+                    close(fd)
+                    if ok { return nil }
+                    NyxelActivityLog.record("WRITE POSIX parcial errno=\(errno)")
+                } else {
+                    NyxelActivityLog.record("WRITE POSIX open fallo errno=\(errno) \(String(cString: strerror(errno)))")
+                }
                 return ContainerWriteError(airliftNote: airliftNote, directError: atomicError)
             }
         }
@@ -486,18 +526,21 @@ class InjectorService {
 
         if let container = container {
             let bundleDir = container + "/" + basePath
-            let hRoot = DavizinGrantContainerAccess(container)
-            let hDir = DavizinGrantContainerAccess(bundleDir)
-            do {
-                try FileManager.default.createDirectory(
-                    atPath: bundleDir,
-                    withIntermediateDirectories: true)
-                NyxelActivityLog.record("BUNDLE DIR creado: \(basePath)")
-            } catch {
-                NyxelActivityLog.record("BUNDLE DIR fallo: \(error.localizedDescription)")
+            if ensureDirectoryTree(bundleDir) {
+                NyxelActivityLog.record("BUNDLE DIR ok (mkdir): \(basePath)")
+            } else {
+                NyxelActivityLog.record("BUNDLE DIR mkdir fallo — fallback Foundation")
+                let hRoot = DavizinGrantContainerAccess(container)
+                try? FileManager.default.createDirectory(atPath: bundleDir, withIntermediateDirectories: true)
+                DavizinReleaseContainerGrant(hRoot)
             }
-            DavizinReleaseContainerGrant(hDir)
-            DavizinReleaseContainerGrant(hRoot)
+            var isDir: ObjCBool = false
+            let dirOk = FileManager.default.fileExists(atPath: bundleDir, isDirectory: &isDir) && isDir.boolValue
+            NyxelActivityLog.record("BUNDLE DIR verify: \(dirOk ? "EXISTE" : "NO EXISTE") path=\(bundleDir.suffix(60))")
+            if !dirOk {
+                return InjectorResult(success: false,
+                    message: "No se pudo crear el directorio de destino. El juego debe estar instalado.")
+            }
         }
 
         guard !sessionToken.isEmpty else {
