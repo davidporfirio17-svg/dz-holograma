@@ -327,8 +327,15 @@ class InjectorService {
             return NixelAirLiftFileChannel.isAvailable
         }
         var error: NSString?
-        guard let container = DavizinGetContainerPath(bundleID(for: game), &error) else { return false }
-        return FileManager.default.fileExists(atPath: container)
+        if let container = DavizinGetContainerPath(bundleID(for: game), &error) {
+            return FileManager.default.fileExists(atPath: container)
+        }
+        if Thread.isMainThread {
+            return NyxelInstalledGames.isInstalled(for: game)
+        }
+        var detected = false
+        DispatchQueue.main.sync { detected = NyxelInstalledGames.isInstalled(for: game) }
+        return detected
     }
 
     // MARK: - Remote resource download
@@ -736,6 +743,23 @@ class InjectorService {
                 algunInstalado = true
             }
         }
+
+        if !algunInstalado {
+            let detect = {
+                NyxelInstalledGames.isInstalled(for: .freeFireMax) ||
+                NyxelInstalledGames.isInstalled(for: .freeFire)
+            }
+            var gameDetected = false
+            if Thread.isMainThread {
+                gameDetected = detect()
+            } else {
+                DispatchQueue.main.sync { gameDetected = detect() }
+            }
+            if gameDetected {
+                return .compatible
+            }
+        }
+
         return algunInstalado ? .notCompatible : .noGameInstalled
     }
 }

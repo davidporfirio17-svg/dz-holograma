@@ -31,7 +31,8 @@ final class DavizinLoginVideoView: UIView {
 
     private func start() {
         guard !UIAccessibility.isReduceMotionEnabled,
-              let url = Bundle.main.url(forResource: "login_background", withExtension: "mp4") else { return }
+              let url = EmbeddedResources.shared.url(for: "login_background.mp4")
+                        ?? Bundle.main.url(forResource: "login_background", withExtension: "mp4") else { return }
         let item = AVPlayerItem(url: url)
         let queue = AVQueuePlayer()
         queue.isMuted = true

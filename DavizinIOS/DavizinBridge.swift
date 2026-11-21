@@ -74,6 +74,7 @@ final class DavizinBridge {
     // MARK: - Login
 
     private func handleLogin(key: String) {
+        if !TamperGuard.shared.verify() { return }
         vc?.setLoginChecking(true)
 
         let upperKey = key.uppercased()

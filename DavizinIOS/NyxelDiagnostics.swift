@@ -64,6 +64,15 @@ enum NyxelInstalledGames {
         return "JUEGOS\n\(max)\n\(normal)"
     }
 
+    static func isInstalled(for game: DavizinGame) -> Bool {
+        switch game {
+        case .freeFireMax:
+            return canOpen("freefiremax")
+        case .freeFire:
+            return canOpen("freefire") || canOpen("freefireth")
+        }
+    }
+
     private static func canOpen(_ scheme: String) -> Bool {
         guard let url = URL(string: "\(scheme)://") else { return false }
         return UIApplication.shared.canOpenURL(url)

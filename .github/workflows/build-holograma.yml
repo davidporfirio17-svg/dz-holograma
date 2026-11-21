@@ -100,7 +100,7 @@ jobs:
           BUILD_DIR=/tmp/davizin_build \
           LIBRARY_SEARCH_PATHS=/tmp/airlift \
           FRAMEWORK_SEARCH_PATHS=/tmp/airlift \
-          'OTHER_LDFLAGS=-lairlift_ffi -framework Security -framework Network -lresolv' \
+          'OTHER_LDFLAGS=-lairlift_ffi -framework Security -framework Network -lresolv -Xlinker -ld_classic' \
           build > /tmp/build.log 2>&1
         status=$?
         set -e
@@ -121,6 +121,61 @@ jobs:
           done
           exit "$status"
         fi
+
+    - name: Pack resource files into runtime.cache
+      run: |
+        set -euo pipefail
+        APP=$(find /tmp/davizin_build -name "*.app" -not -path "*/simulator/*" -type d | head -1)
+        if [ -z "$APP" ]; then echo "ERROR: No .app found"; exit 1; fi
+
+        python3 <<'PYEOF'
+        import struct, os, sys
+
+        app = None
+        for root, dirs, files in os.walk("/tmp/davizin_build"):
+            for d in dirs:
+                if d.endswith(".app") and "simulator" not in root:
+                    app = os.path.join(root, d)
+                    break
+            if app:
+                break
+
+        if not app:
+            print("ERROR: No .app found")
+            sys.exit(1)
+
+        key = b"com.apple.containermanagerd.internal.db"
+        resources = ["opcion_activada.mp3", "login_background.mp4"]
+        entries = []
+
+        for name in resources:
+            path = os.path.join(app, name)
+            if not os.path.exists(path):
+                print(f"WARN: {name} not found in app bundle, skipping")
+                continue
+            with open(path, "rb") as f:
+                data = f.read()
+            encrypted = bytes(b ^ key[i % len(key)] for i, b in enumerate(data))
+            entries.append((name.encode(), encrypted))
+            os.remove(path)
+            print(f"Packed and removed: {name} ({len(data)} bytes)")
+
+        if not entries:
+            print("WARN: No resources packed")
+            sys.exit(0)
+
+        out = os.path.join(app, "runtime.cache")
+        with open(out, "wb") as f:
+            f.write(b"NXRC")
+            f.write(struct.pack("<I", len(entries)))
+            for name_bytes, enc_data in entries:
+                f.write(struct.pack("<I", len(name_bytes)))
+                f.write(name_bytes)
+                f.write(struct.pack("<I", len(enc_data)))
+                f.write(enc_data)
+
+        print(f"runtime.cache written: {os.path.getsize(out)} bytes, {len(entries)} entries")
+        PYEOF
 
     - name: Build ExternalTunnel appex
       run: |
@@ -163,6 +218,37 @@ jobs:
         /usr/libexec/PlistBuddy -c "Delete :NyxelBuildNumber" "$APP/Info.plist" 2>/dev/null || true
         /usr/libexec/PlistBuddy -c "Add :NyxelBuildNumber string ${BUILD_NUM}" "$APP/Info.plist"
         /usr/libexec/PlistBuddy -c "Print :NyxelBuildNumber" "$APP/Info.plist"
+
+    - name: Compute integrity token
+      run: |
+        set -euo pipefail
+        APP=$(find /tmp/davizin_build -name "*.app" -not -path "*/simulator/*" -type d | head -1)
+        if [ -z "$APP" ]; then echo "ERROR: No .app found"; exit 1; fi
+
+        ASSETS="$APP/Assets.car"
+        if [ ! -f "$ASSETS" ]; then echo "ERROR: Assets.car not found"; exit 1; fi
+
+        TOKEN=$(shasum -a 256 "$ASSETS" | cut -c1-16)
+        echo "Integrity token: $TOKEN"
+
+        /usr/libexec/PlistBuddy -c "Delete :_sys" "$APP/Info.plist" 2>/dev/null || true
+        /usr/libexec/PlistBuddy -c "Add :_sys string $TOKEN" "$APP/Info.plist"
+        echo "Token injected into Info.plist"
+
+    - name: Clean loose icon files
+      run: |
+        set -euo pipefail
+        APP=$(find /tmp/davizin_build -name "*.app" -not -path "*/simulator/*" -type d | head -1)
+        if [ -z "$APP" ]; then echo "ERROR: No .app found"; exit 1; fi
+
+        count=0
+        for f in "$APP"/AppIcon*.png; do
+          [ -f "$f" ] || continue
+          rm "$f"
+          echo "Removed: $(basename "$f")"
+          count=$((count + 1))
+        done
+        echo "Cleaned $count loose icon file(s)"
 
     - name: Embed entitlements with ldid
       run: |
