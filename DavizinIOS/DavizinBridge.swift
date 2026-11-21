@@ -113,7 +113,14 @@ final class DavizinBridge {
     }
 
     private func continueAfterLogin() {
-        vc?.showGameSelectionScreen()
+        if NyxelCleanupFlow.hasPendingWork, let game = NyxelCleanupFlow.game {
+            selectedGame = game
+            let savedModeID = UserDefaults.standard.string(forKey: "dz_last_mode")
+            let mode = selectedMode ?? savedModeID.flatMap { DavizinModeCatalog.mode(id: $0) }
+            vc?.showCleanupRecoveryScreen(for: game, mode: mode)
+        } else {
+            vc?.showGameSelectionScreen()
+        }
     }
 
     // MARK: - Operaciones
@@ -189,6 +196,20 @@ final class DavizinBridge {
             vc?.setOperationState(.failed("NYX-006 — Ya hay una operación en curso."))
             return
         }
+        if operation == .inject && NyxelCleanupFlow.hasPendingWork {
+            vc?.setOperationState(.failed("Limpia sesión sí o sí antes de volver a inyectar."))
+            return
+        }
+        if operation == .clean {
+            guard NyxelCleanupFlow.stage == .needsCleaning else {
+                vc?.setOperationState(.failed("No hay una limpieza pendiente que pueda confirmarse."))
+                return
+            }
+            if let pendingGame = NyxelCleanupFlow.game { selectedGame = pendingGame }
+            operationInFlight = true
+            executeAuthorizedOperation(.clean)
+            return
+        }
         guard !sessionKey.isEmpty else {
             vc?.setOperationState(.failed("NYX-001 — Sesión no autorizada."))
             return
@@ -230,6 +251,20 @@ final class DavizinBridge {
                     return
                 }
                 self.startInjectionFlow()
+            }
+
+        case .clean:
+            vc?.setOperationState(.cleaning)
+            let game = selectedGame
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self = self else { return }
+                let result = InjectorService.uninject(game: game)
+                DispatchQueue.main.async {
+                    self.hapticFeedback(success: result.success)
+                    self.operationInFlight = false
+                    if result.success { NyxelCleanupFlow.markCleaningSucceeded(for: game) }
+                    self.vc?.setOperationState(result.success ? .succeeded(result.message) : .failed(result.message))
+                }
             }
         }
     }

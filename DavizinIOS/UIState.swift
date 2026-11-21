@@ -1,7 +1,33 @@
 import Foundation
 import UserNotifications
+import Network
 
 enum DavizinScreenStage: Equatable { case login, home, gameSelection, modeSelection, operation, profile, vpn }
+
+extension Notification.Name {
+    static let nyxelConnectivityDidChange = Notification.Name("nyxel.connectivity.didChange")
+}
+
+enum NyxelConnectivity {
+    private static let monitor = NWPathMonitor()
+    private static let queue = DispatchQueue(label: "nyxel.connectivity.monitor")
+    private static var started = false
+    private(set) static var isConnected: Bool? = nil
+
+    static func startMonitoring() {
+        guard !started else { return }
+        started = true
+        monitor.pathUpdateHandler = { path in
+            let connected = path.status == .satisfied
+            DispatchQueue.main.async {
+                guard isConnected != connected else { return }
+                isConnected = connected
+                NotificationCenter.default.post(name: .nyxelConnectivityDidChange, object: connected)
+            }
+        }
+        monitor.start(queue: queue)
+    }
+}
 
 enum DavizinGame: String, CaseIterable { case freeFire = "Free Fire", freeFireMax = "Free Fire MAX" }
 
@@ -94,26 +120,136 @@ enum DavizinModeCatalog {
     }
 }
 
-enum DavizinOperationKind: String, CaseIterable { case runExploit = "Run Exploit", inject = "Inject" }
+enum DavizinOperationKind: String, CaseIterable { case runExploit = "Run Exploit", inject = "Inject", clean = "Clean" }
 enum DavizinOperationState: Equatable {
-    case idle, checking, running, injecting, succeeded(String), failed(String)
-    var isBusy: Bool { switch self { case .checking, .running, .injecting: return true; case .idle, .succeeded, .failed: return false } }
+    case idle, checking, running, injecting, cleaning, succeeded(String), failed(String)
+    var isBusy: Bool { switch self { case .checking, .running, .injecting, .cleaning: return true; case .idle, .succeeded, .failed: return false } }
 }
 
-enum NyxelCleanupStage: String { case idle }
+enum NyxelCleanupStage: String {
+    case idle
+    case readyToOpen
+    case waitingForReturn
+    case needsCleaning
+    case readyToReopen
+}
 
 enum NyxelCleanupFlow {
-    static var stage: NyxelCleanupStage { .idle }
-    static var game: DavizinGame? { nil }
-    static var hasPendingWork: Bool { false }
-    static func markInjectionWriteStarted(for game: DavizinGame) {}
-    static func markInjectionSucceeded(for game: DavizinGame) {}
-    static func markCleaningSucceeded(for game: DavizinGame) {}
-    static func markGameOpened() {}
-    static func markReturnedToNyxel() {}
-    static func resetForFreshLaunch() {}
-    static func requestReminderPermission(completion: @escaping (Bool) -> Void) { completion(false) }
-    static func cancelReminder() {}
+    private static let stageKey = "nyxel.test.cleanup.stage"
+    private static let gameKey = "nyxel.test.cleanup.game"
+    private static let notificationID = "nyxel.test.cleanup.reminder"
+    private static let center = UNUserNotificationCenter.current()
+
+    private static var storedStage: NyxelCleanupStage {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: stageKey),
+                  let value = NyxelCleanupStage(rawValue: raw) else { return .idle }
+            return value
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: stageKey) }
+    }
+
+    static var stage: NyxelCleanupStage { storedStage }
+
+    private static var storedGame: DavizinGame? {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: gameKey) else { return nil }
+            return DavizinGame(rawValue: raw)
+        }
+        set {
+            if let newValue { UserDefaults.standard.set(newValue.rawValue, forKey: gameKey) }
+            else { UserDefaults.standard.removeObject(forKey: gameKey) }
+        }
+    }
+
+    static var game: DavizinGame? { storedGame }
+
+    static var hasPendingWork: Bool { stage != .idle }
+
+    static func markInjectionWriteStarted(for game: DavizinGame) {
+        storedGame = game
+        storedStage = .needsCleaning
+        cancelReminder()
+    }
+
+    static func markInjectionSucceeded(for game: DavizinGame) {
+        guard storedGame == game else { return }
+        storedStage = .readyToOpen
+    }
+
+    static func requestReminderPermission(completion: @escaping (Bool) -> Void) {
+        center.getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                completion(true)
+            case .notDetermined:
+                center.requestAuthorization(options: [.alert, .sound]) { allowed, _ in
+                    completion(allowed)
+                }
+            default:
+                completion(false)
+            }
+        }
+    }
+
+    static func markGameOpened() {
+        switch stage {
+        case .readyToOpen:
+            storedStage = .waitingForReturn
+            scheduleReminder()
+        case .readyToReopen:
+            finishCycle()
+        case .idle, .waitingForReturn, .needsCleaning:
+            break
+        }
+    }
+
+    static func markReturnedToNyxel() {
+        guard stage == .waitingForReturn else { return }
+        storedStage = .needsCleaning
+        cancelReminder()
+    }
+
+    static func prepareForRelaunch() {
+        if stage == .waitingForReturn {
+            storedStage = .needsCleaning
+        }
+        cancelReminder()
+    }
+
+    static func resetForFreshLaunch() {
+        storedStage = .idle
+        storedGame = nil
+        cancelReminder()
+    }
+
+    static func markCleaningSucceeded(for game: DavizinGame) {
+        guard stage == .needsCleaning, storedGame == game else { return }
+        storedStage = .readyToReopen
+        cancelReminder()
+    }
+
+    static func finishCycle() {
+        storedStage = .idle
+        storedGame = nil
+        cancelReminder()
+    }
+
+    static func cancelReminder() {
+        center.removePendingNotificationRequests(withIdentifiers: [notificationID])
+        center.removeDeliveredNotifications(withIdentifiers: [notificationID])
+    }
+
+    private static func scheduleReminder() {
+        let content = UNMutableNotificationContent()
+        content.title = "Cierra el juego para limpiar"
+        content.body = "Regresa a Nyxel y pulsa \u{201c}LIMPIAR SESI\u{00d3}N S\u{00cd} O S\u{00cd}\u{201d} antes de volver a inyectar."
+        content.sound = .default
+        content.interruptionLevel = .timeSensitive
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 3, repeats: false)
+        let request = UNNotificationRequest(identifier: notificationID, content: content, trigger: trigger)
+        center.add(request)
+    }
 }
 
 extension Notification.Name {
