@@ -61,7 +61,6 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
-		<string>network-extension</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>NyxelHolo necesita acceso a la red local para descubrir y vincular dispositivos mediante el protocolo Remote Pairing de iOS.</string>
