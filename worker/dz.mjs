@@ -2387,7 +2387,8 @@ ${okMsg?`<div class="mbar" style="margin-bottom:16px;border:1px solid var(--ok);
 },async scheduled(event,env,ctx){await expireVendorUnlimitedPlans(env);}};
 
 async function holoModes(req,env){
-  // Devuelve SOLO los modos de holograma, con el mismo shape que appChk pone en data.modes.
+  // Este worker ES el catalogo de extras: devuelve todos los modos a los que la key
+  // tiene derecho, con el mismo shape y la misma logica de entitlement que appChk (data.modes).
   // La app (fetchHoloModes) manda X-DZ-Key y X-DZ-HWID, sin sesion: no exigimos client session aqui.
   const h={'Content-Type':'application/json','Access-Control-Allow-Origin':'*','Cache-Control':'no-store, no-cache, must-revalidate','Pragma':'no-cache'};
   const key=(req.headers.get('X-DZ-Key')||'').trim().toUpperCase();
@@ -2403,7 +2404,7 @@ async function holoModes(req,env){
   const modesRaw=await env.DZH_KV.get('dzh_app_modes');
   let modes=[];
   if(modesRaw){try{const x=JSON.parse(modesRaw);if(Array.isArray(x)){for(const m of x){
-    if(!m||typeof m.id!=='string'||!m.id.startsWith('holograma'))continue;
+    if(!m||typeof m.id!=='string'||typeof m.label!=='string')continue;
     const enabledMax=typeof m.enabledMax==='boolean'?m.enabledMax:m.enabled!==false;
     const enabledNormal=typeof m.enabledNormal==='boolean'?m.enabledNormal:m.enabled!==false;
     if(!enabledMax&&!enabledNormal)continue;
