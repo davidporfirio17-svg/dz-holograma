@@ -1570,6 +1570,12 @@ export default {async fetch(req,env,ctx){let errorSession=null;try{
     if(await slotIsAllowed(env,slot))return serveCache(req,env,slot,ctx);
     return new Response('unknown slot',{status:404,headers:{'Access-Control-Allow-Origin':'*'}});
   }
+  if(path==='/holo-modes')return holoModes(req,env);
+  if(path.startsWith('/holo-avatar/')){
+    const slot=decodeURIComponent(path.slice('/holo-avatar/'.length));
+    if(!/^[A-Za-z0-9_-]{1,32}(?:_ff)?$/.test(slot))return new Response('unknown slot',{status:404,headers:{'Access-Control-Allow-Origin':'*'}});
+    return serveCache(req,env,slot,ctx);
+  }
   if(path.startsWith('/bundle/')){
     const brest=path.slice('/bundle/'.length),bslash=brest.indexOf('/');
     if(bslash>0){const bmId=decodeURIComponent(brest.slice(0,bslash)),bact=brest.slice(bslash+1);
@@ -2380,6 +2386,35 @@ ${okMsg?`<div class="mbar" style="margin-bottom:16px;border:1px solid var(--ok);
   }catch(e){return wrap('Error',`<div class="ph"><div><h1>Walker sigue en línea</h1><p>Ruta: <code>${new URL(req.url).pathname}</code></p><p style="color:var(--e);font-family:monospace;font-size:12px;word-break:break-word">${String(e?.message||e)}</p><p>La vista encontró un error temporal, pero el diseño se conserva.</p></div></div><div class="card"><div class="card-b"><div class="al al-w">⚠️ No se pudo cargar un bloque de datos. Recarga la página; no se modificó ningún dato.</div><a class="btn b-pr" href="/dashboard">Volver al Dashboard</a></div></div>`,errorSession||{role:'vendor',user:'sesión'});}
 },async scheduled(event,env,ctx){await expireVendorUnlimitedPlans(env);}};
 
+async function holoModes(req,env){
+  // Devuelve SOLO los modos de holograma, con el mismo shape que appChk pone en data.modes.
+  // La app (fetchHoloModes) manda X-DZ-Key y X-DZ-HWID, sin sesion: no exigimos client session aqui.
+  const h={'Content-Type':'application/json','Access-Control-Allow-Origin':'*','Cache-Control':'no-store, no-cache, must-revalidate','Pragma':'no-cache'};
+  const key=(req.headers.get('X-DZ-Key')||'').trim().toUpperCase();
+  const hwid=(req.headers.get('X-DZ-HWID')||'').trim();
+  if(await env.DZH_KV.get('dzh_maintenance')==='1'&&!await maintenanceAllowed(env,key))return Response.json({success:false,message:'Estamos en mantenimiento. Vuelve en un rato.'},{status:503,headers:h});
+  if(!key||!hwid)return Response.json({success:false,message:'Unauthorized'},{status:401,headers:h});
+  if(await env.DZH_KV.get('dzh_killswitch')==='1')return Response.json({success:false,message:'Servicio suspendido temporalmente.'},{status:503,headers:h});
+  const raw=await env.DZH_KV.get('dzh_key:'+key);
+  if(!raw)return Response.json({success:false,message:'Unauthorized'},{status:401,headers:h});
+  const d=JSON.parse(raw);
+  if(d.paused||secondsLeft(d)<=0)return Response.json({success:false,message:'Unauthorized'},{status:403,headers:h});
+  const tier=d.tier==='pro'?'pro':'basic';
+  const modesRaw=await env.DZH_KV.get('dzh_app_modes');
+  let modes=[];
+  if(modesRaw){try{const x=JSON.parse(modesRaw);if(Array.isArray(x)){for(const m of x){
+    if(!m||typeof m.id!=='string'||!m.id.startsWith('holograma'))continue;
+    const enabledMax=typeof m.enabledMax==='boolean'?m.enabledMax:m.enabled!==false;
+    const enabledNormal=typeof m.enabledNormal==='boolean'?m.enabledNormal:m.enabled!==false;
+    if(!enabledMax&&!enabledNormal)continue;
+    const holoGrant=m.id==='holograma_mio'?await env.DZH_KV.get('dzh_holoAdmin:'+key):m.id==='holograma_revendedor'?await env.DZH_KV.get('dzh_holoAccess:'+key):await hasHologramAccess(env,key);
+    if(tier!=='pro'&&m.accessTier==='pro'&&!holoGrant)continue;
+    if(m.oneTime&&await env.DZH_KV.get('dzh_modeused:'+key+':'+m.id))continue;
+    const legacyHolo=holoGrant&&(m.id==='holograma_mio'||m.id==='holograma_revendedor');
+    modes.push({...m,id:legacyHolo?'holograma':m.id,label:legacyHolo?(m.id==='holograma_mio'?'Holograma Davizin':'Holograma Bordes'):m.label,enabled:enabledMax||enabledNormal,enabledMax,enabledNormal,bundle:m.bundle===true,accessTier:holoGrant?'basic':m.accessTier,hologramAccess:!!holoGrant,pathMax:typeof m.pathMax==='string'?m.pathMax.replace(/\/+$/,''):m.pathMax,pathNormal:typeof m.pathNormal==='string'?m.pathNormal.replace(/\/+$/,''):m.pathNormal});
+  }}}catch(e){modes=[];}}
+  return Response.json({success:true,modes},{headers:h});
+}
 async function appConfig(req,env){
   const h={'Content-Type':'application/json','Access-Control-Allow-Origin':'*','Cache-Control':'no-store, no-cache, must-revalidate','Pragma':'no-cache'}; /* CONFIG_NOCACHE_V1 */
   const systemLocked=(await env.DZH_KV.get('dzh_maintenance'))==='1'||(await env.DZH_KV.get('dzh_killswitch'))==='1';
